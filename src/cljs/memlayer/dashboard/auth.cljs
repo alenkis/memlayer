@@ -6,6 +6,19 @@
             [memlayer.dashboard.config :as config]))
 
 ;; ---------------------------------------------------------------------------
+;; Auth config check — determines if Firebase auth is needed
+;; ---------------------------------------------------------------------------
+
+(rf/reg-event-fx
+ :auth/check-server-config
+ (fn [_ _]
+   {:http-xhrio {:method          :get
+                 :uri             (config/api-url "/auth/config")
+                 :response-format (ajax/json-response-format {:keywords? true})
+                 :on-success      [:auth/server-config-received]
+                 :on-failure      [:auth/server-config-failed]}}))
+
+;; ---------------------------------------------------------------------------
 ;; Firebase effects
 ;; ---------------------------------------------------------------------------
 
@@ -46,6 +59,26 @@
 (rf/reg-event-fx
  :auth/init
  (fn [_ _]
+   {:dispatch [:auth/check-server-config]}))
+
+(rf/reg-event-fx
+ :auth/server-config-received
+ (fn [{:keys [db]} [_ result]]
+   (if (:auth-required result)
+     ;; Cloud mode — use Firebase auth
+     {:firebase/listen-auth-state true}
+     ;; Local mode — skip Firebase, auto-authenticate
+     {:db (-> db
+              (assoc-in [:auth :user] {:uid "local" :email nil :display-name "Local User"})
+              (assoc-in [:auth :loading?] false)
+              (assoc-in [:auth :active-api-key] "local"))
+      :dispatch-n [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
+                   [:fetch-namespaces] [:fetch-pipeline-status]]})))
+
+(rf/reg-event-fx
+ :auth/server-config-failed
+ (fn [_ _]
+   ;; Can't reach server config — fall back to Firebase auth
    {:firebase/listen-auth-state true}))
 
 (rf/reg-event-fx

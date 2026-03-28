@@ -36,9 +36,11 @@
    API/MCP routes pass through; everything else tries static file then SPA."
   [handler]
   (fn [request]
-    (or (handler request)
-        (resource/resource-request request "public")
-        (spa-handler request))))
+    (let [resp (handler request)]
+      (if (or (nil? resp) (= 404 (:status resp)))
+        (or (resource/resource-request request "public")
+            (spa-handler request))
+        resp))))
 
 ;; Local server init-key — wraps router with static file + SPA fallback
 (defmethod ig/init-key :memlayer/local-server [_ {:keys [handler config]}]

@@ -98,6 +98,10 @@
        (ring/router
         [["/health" {:get {:handler health/handler}}]
 
+         ["/api/v1/auth/config" {:get {:handler (fn [_]
+                                                  {:status 200
+                                                   :body   {:auth-required (get-in config [:auth :auth-enabled] true)}})}}]
+
          ["/mcp" {:post   {:handler (:post mcp)}
                   :delete {:handler (:delete mcp)}}]
 

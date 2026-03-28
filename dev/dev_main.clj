@@ -1,8 +1,8 @@
 (ns dev-main
-  "Dev entry point — starts nREPL + the full system.
-   Behaves like `make server` but with an nREPL port for editor connection."
+  "Dev entry point — starts nREPL + the local system.
+   Serves API + bundled dashboard on a single port with nREPL for editor connection."
   (:require [nrepl.server :as nrepl]
-            [memlayer.system :as sys]
+            [memlayer.local :as local]
             [clojure.tools.logging :as log]))
 
 (defn -main [& _args]
@@ -16,4 +16,4 @@
                                  (nrepl/stop-server nrepl-server)
                                  (.delete (java.io.File. ".nrepl-port")))))
     (log/info (str "nREPL (cider) server started on port " port " — nrepl://localhost:" port)))
-  (sys/-main))
+  (local/-main))

@@ -12,7 +12,9 @@
 (def api-ws-base
   (if ^boolean goog.DEBUG
     (str "ws://localhost:" dev-api-port "/api/v1")
-    "wss://api.memlayer.dev/api/v1"))
+    (let [loc js/window.location
+          proto (if (= "https:" (.-protocol loc)) "wss:" "ws:")]
+      (str proto "//" (.-host loc) "/api/v1"))))
 
 (defn api-url [path]
   (str api-base path))

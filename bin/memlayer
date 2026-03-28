@@ -65,7 +65,7 @@ case "$MODE" in
     JVM_OPTS+=("-Dlogback.configurationFile=logback-mcp.xml")
     ;;
   server)
-    MAIN_CLASS="memlayer.system"
+    MAIN_CLASS="memlayer.local"
     ;;
   *)
     echo "Unknown mode: $MODE" >&2

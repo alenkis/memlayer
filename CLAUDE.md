@@ -51,9 +51,10 @@ When working in a Conductor workspace (`.context/` directory present), a Linear 
 3. Do NOT proceed with implementation until a ticket is tracked
 
 **When associating a ticket**, the `/linear` skill should also:
+- **Create a new ticket automatically** without asking for confirmation. Infer the title, description, project, and priority from the conversation context. Only ask the user when it's genuinely unclear which project the ticket belongs to.
 - **Assign** the ticket to the current user
 - **Set status** to "In Progress"
-- **Ensure it belongs to a project** — list existing projects, ask user to pick one, or propose creating a new project if none fits. Every ticket must belong to a project.
+- **Ensure it belongs to a project** — list existing projects and pick the best fit, or create a new project if none fits. Every ticket must belong to a project.
 - **Ensure description exists** — every ticket must have a description with: Problem (what's wrong), Impact (why it matters), Desired Outcome (what done looks like). For simple tickets, add an Approach section with high-level direction.
 - Set **priority** if not already set (ask user or default to Normal)
 - Set **relationships** (`relatedTo`, `blocks`, `blockedBy`) to other tickets if relevant
@@ -77,7 +78,8 @@ TICKET_URL=https://linear.app/memlayer/issue/MEM-123
 
 **Key commands:**
 
-- `bb server` — start HTTP API server (port 8080)
+- `bb server` — start memlayer (API + dashboard on port 8090, + nREPL). Auto-builds dashboard on first run.
+- `bb dev` — start API + dashboard hot-reload + CSS watcher (for memlayer contributors)
 - `bb mcp` — start MCP stdio server
 - `bb repl-server` — start dev REPL
 - `bb test` — run unit tests
@@ -85,18 +87,16 @@ TICKET_URL=https://linear.app/memlayer/issue/MEM-123
 - `bb test-full` — check + integration + e2e tests (expensive, uses real providers)
 - `bb fmt` — format all Clojure files
 - `bb fmt-check` — check formatting without changes
-- `bb dashboard-dev` — start CLJS dashboard (port 3000, connects to API on 8080)
-- `bb dashboard-css` — watch/compile Tailwind CSS
+- `bb dashboard-build` — production build of dashboard (run manually to rebuild)
 - `bb tasks` — see all available tasks
 
-**Custom ports:** All config lives in `config.edn` (Aero-tagged EDN). To run on non-default ports, pass env vars to **both** server and dashboard:
+**Custom ports:** Config lives in `config.edn` (cloud) and `resources/config-local.edn` (local). Override with env vars:
 
 ```bash
-MEMLAYER_PORT=8081 DASHBOARD_PORT=5176 bb server
-MEMLAYER_PORT=8081 DASHBOARD_PORT=5176 bb dashboard-dev
+MEMLAYER_PORT=9090 bb server
 ```
 
-Both env vars are needed on both commands: the server uses `DASHBOARD_PORT` for CORS, and the dashboard uses `MEMLAYER_PORT` to know where to send API requests. For parallel sessions, use git worktrees — each worktree gets its own `shadow-cljs.edn` and shadow-cljs server.
+For parallel sessions, use git worktrees — each worktree gets its own ports and shadow-cljs server.
 
 ## Pre-Merge Verification
 

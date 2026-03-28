@@ -14,9 +14,21 @@
              (shell "clojure" "-M:test" "--print-test-plan" "--focus" ":unit"))}
 
   server
-  {:doc      "Start HTTP server + nREPL (writes .nrepl-port)"
+  {:doc      "Start memlayer (API + dashboard) on a single port + nREPL"
+   :depends  [dashboard-ensure]
    :requires ([tasks :as t])
    :task     (t/shell-env "clojure" "-M:dev" "-m" "dev-main")}
+
+  dev
+  {:doc      "Start API + dashboard hot-reload + CSS watcher (for contributors)"
+   :depends  [shadow-cljs-edn]
+   :requires ([tasks :as t])
+   :task     (do
+               (shell "npm" "run" "build:css")
+               (let [srv  (future (t/shell-env "clojure" "-M:dev" "-m" "dev-main"))
+                     dash (future (shell "npx" "shadow-cljs" "-A:dashboard" "watch" "dashboard"))
+                     css  (future (shell "npm" "run" "dev:css"))]
+                 (deref srv)))}
 
   repl-server
   {:doc      "Start dev REPL with socket server on port 7888"
@@ -121,6 +133,12 @@
    :task    (do (shell "npm" "run" "build:css")
                (shell "npx" "shadow-cljs" "-A:dashboard" "release" "dashboard"))}
 
+  dashboard-ensure
+  {:doc      "Build dashboard if not already built"
+   :requires ([babashka.fs :as fs])
+   :task     (when-not (fs/exists? "resources/public/js/compiled/main.js")
+               (run 'dashboard-build))}
+
   ;; ---- Build / Distribution ----
 
   uberjar
@@ -140,20 +158,9 @@
 
   ;; ---- Local Mode ----
 
-  local-server
-  {:doc      "Start memlayer in local mode (JVM, no auth, file-backed storage)"
-   :requires ([tasks :as t])
-   :task     (t/shell-env "clojure" "-M:local")}
-
-  local-dashboard-build
-  {:doc     "Production build of dashboard for local mode bundling"
-   :depends [shadow-cljs-edn dashboard-deps]
-   :task    (do (shell "npm" "run" "build:css")
-               (shell "npx" "shadow-cljs" "-A:dashboard" "release" "dashboard"))}
-
   local-uberjar
   {:doc     "Build local-mode uberjar (JVM)"
-   :depends [local-dashboard-build]
+   :depends [dashboard-build]
    :task    (shell "clojure" "-T:build" "local-uber")}
 
   local-native-uberjar
