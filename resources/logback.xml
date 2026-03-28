@@ -1,0 +1,17 @@
+<configuration>
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <includeMdcKeyName>traceId</includeMdcKeyName>
+      <includeMdcKeyName>userId</includeMdcKeyName>
+      <includeMdcKeyName>method</includeMdcKeyName>
+      <includeMdcKeyName>uri</includeMdcKeyName>
+    </encoder>
+  </appender>
+
+  <logger name="datahike" level="WARN"/>
+  <logger name="konserve" level="WARN"/>
+
+  <root level="INFO">
+    <appender-ref ref="STDOUT"/>
+  </root>
+</configuration>

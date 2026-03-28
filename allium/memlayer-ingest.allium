@@ -1,0 +1,443 @@
+-- allium: 3
+-- memlayer-ingest.allium
+
+-- Scope: Async ingest jobs and WebSocket streaming
+-- Includes: IngestJob state machine, job queue, WebSocket protocol, stream chunking
+-- Depends on: memlayer-core.allium (Retain operation)
+-- See also:
+--   - memlayer-core.allium: Ingest rule (synchronous bulk import)
+--   - This spec covers the ASYNC job system and WebSocket streaming,
+--     which are distinct from the synchronous Ingest rule in core.
+
+use "./memlayer-core.allium" as core
+
+-- =============================================================================
+-- Configuration
+-- =============================================================================
+
+config {
+    token_chunk_size: Integer = 2000     -- target tokens per chunk
+    char_limit: Integer = 8000           -- character limit (4 chars ~ 1 token)
+    search_zone_ratio: Float = 0.2       -- boundary search zone (last 20% of chunk)
+    batch_size: Integer = 10             -- chunks per batch-retain call
+    queue_capacity: Integer = 100        -- max jobs in processing queue
+}
+
+-- =============================================================================
+-- Entities
+-- =============================================================================
+
+entity IngestJob {
+    entity_id: String                    -- target entity for all retained memories
+    status: Queued | Chunking | Processing | Completed | Failed
+    source_type: text | file
+    source_name: String?                 -- user-friendly source identifier
+    content: String                      -- full content to process
+    total_items: Integer when status = Processing | Completed
+    processed: Integer                   -- count of successful chunk retains
+    failed: Integer                      -- count of failed chunk retains
+    created_at: Timestamp
+    started_at: Timestamp when status = Chunking | Processing | Completed | Failed
+    completed_at: Timestamp when status = Completed | Failed
+    error_message: String when status = Failed
+
+    transitions status {
+        Queued -> Chunking
+        Chunking -> Processing
+        Chunking -> Failed
+        Processing -> Completed
+        terminal: Completed, Failed
+    }
+}
+
+-- =============================================================================
+-- Ingest Job State Machine
+-- =============================================================================
+
+-- State transitions:
+--   Queued -> Chunking -> Processing -> Completed
+--                |
+--                +-------> Failed
+-- Note: Processing always reaches Completed (partial failures are tracked
+-- via processed/failed counts). Only chunking errors cause Failed.
+
+-- Job is created in Queued state and placed in the in-memory queue.
+rule SubmitIngestJob {
+    when: SubmitIngestJob(entity_id, content, source_type, source_name)
+
+    ensures: IngestJob.created(
+        entity_id: entity_id,
+        status: Queued,
+        source_type: source_type,
+        source_name: source_name,
+        content: content,
+        processed: 0,
+        failed: 0,
+        created_at: now
+    )
+}
+
+-- Worker dequeues a job and begins chunking.
+rule StartChunking {
+    when: JobDequeued(job)
+
+    requires: job.status = Queued
+
+    ensures: job.status = Chunking
+    ensures: job.started_at = now
+}
+
+-- Chunking splits the content into token-sized pieces.
+-- On success, transition to Processing with chunk count.
+-- On failure, transition to Failed with error.
+rule ChunkingSucceeded {
+    when: ChunkingCompleted(job, chunks)
+
+    requires: job.status = Chunking
+
+    ensures: job.status = Processing
+    ensures: job.total_items = chunks.count
+}
+
+rule ChunkingFailed {
+    when: ChunkingError(job, error)
+
+    requires: job.status = Chunking
+
+    ensures: job.status = Failed
+    ensures: job.completed_at = now
+    ensures: job.error_message = error
+}
+
+-- Each chunk is processed through the Retain pipeline independently.
+-- Success increments processed; failure increments failed.
+rule ProcessChunk {
+    when: ChunkRetained(job, chunk_result)
+
+    requires: job.status = Processing
+
+    if chunk_result.success:
+        ensures: job.processed = job.processed + 1
+    else:
+        ensures: job.failed = job.failed + 1
+}
+
+-- When all chunks are processed, mark the job as Completed.
+rule JobCompleted {
+    when: AllChunksProcessed(job)
+
+    requires: job.status = Processing
+    requires: job.processed + job.failed = job.total_items
+
+    ensures: job.status = Completed
+    ensures: job.completed_at = now
+}
+
+-- =============================================================================
+-- Stream Chunker
+-- =============================================================================
+
+-- Content is split at natural boundaries to avoid cutting mid-sentence.
+-- Target: ~2000 tokens per chunk (estimated at 4 chars per token = 8000 chars).
+--
+-- Boundary search order (within last 20% of char_limit):
+--   1. ". " (sentence boundary)
+--   2. "\n" (newline)
+--   3. Hard split at char_limit (fallback)
+
+-- Batch mode: chunk-text splits a complete string into chunks.
+-- Used for synchronous ingest and API batch-retain.
+rule ChunkText {
+    when: ChunkText(text)
+
+    if text.length <= char_limit:
+        ensures: [text]
+    else:
+        ensures: chunks where
+            for_each chunk in chunks:
+                chunk.length <= char_limit
+            concat(chunks) = text
+            -- splits at natural boundaries per search order above
+}
+
+-- Streaming mode: stateful chunker for incremental text ingestion.
+-- Used by WebSocket ingest — never loads the full file into memory.
+--
+-- feed!(text) -> appends to internal buffer, emits 0..N complete chunks
+--                when buffer exceeds char_limit
+-- flush!()    -> returns remaining buffer as final chunk, or nil
+--
+-- Invariant: concat(all feed! results, flush!) = concat(all feed! inputs)
+rule StreamChunker {
+    when: MakeStreamChunker()
+
+    ensures: chunker with {
+        feed!: fn(text) -> Vector<String>
+        flush!: fn() -> String?
+    }
+
+    -- Completeness: all input text is recoverable
+    invariant: concat(all_emitted_chunks, flush_result) = concat(all_fed_inputs)
+    -- Boundary: emitted chunks split at natural boundaries
+    invariant: for_each chunk in emitted_chunks: chunk.length <= char_limit
+}
+
+-- =============================================================================
+-- API Surfaces
+-- =============================================================================
+
+-- POST /api/v1/ingest/jobs
+-- Submit a new ingest job. Returns immediately with job ID and Queued status.
+surface SubmitJob {
+    provides:
+        SubmitIngestJob(entity_id, content, source_type, source_name)
+
+    guarantee:
+        "response includes job_id and status = queued"
+}
+
+-- GET /api/v1/ingest/jobs/:jobId
+-- Poll job status. Returns current state including progress counts.
+surface PollJob {
+    context job: IngestJob
+
+    exposes:
+        job.status
+        job.source_type
+        job.source_name
+        job.total_items
+        job.processed
+        job.failed
+        job.created_at
+        job.started_at
+        job.completed_at
+        job.error_message
+}
+
+-- GET /api/v1/ingest/jobs
+-- List all ingest jobs.
+surface ListJobs {
+    context jobs: IngestJob
+
+    exposes:
+        for job in jobs:
+            job.status
+            job.source_type
+            job.source_name
+            job.total_items
+            job.processed
+            job.failed
+            job.created_at
+}
+
+-- =============================================================================
+-- WebSocket Streaming Ingest (Ping-Pong Protocol)
+-- =============================================================================
+
+-- WebSocket /api/v1/ingest/stream
+-- 3-phase ping-pong streaming protocol for large file ingestion.
+-- Files are never fully loaded into memory on either client or server.
+--
+-- Protocol overview:
+--   Phase 1: CONNECTION  — server sends {type: "connected"}
+--   Phase 2: METADATA    — client sends file info, server creates chunker
+--   Phase 3: STREAMING   — ping-pong: client sends content, waits for ack
+--
+-- Backpressure: client sends one content frame, waits for ack before
+-- reading the next chunk from disk. This bounds memory usage on both sides.
+
+-- Connection state machine:
+--   connected -> streaming
+entity WSConnectionState {
+    status: Connected | Streaming
+    chunker: StreamChunker when status = Streaming
+    batch_buffer: Vector<String>         -- semantic chunks awaiting batch-retain
+    source: String when status = Streaming
+    namespace: String? when status = Streaming
+    size_bytes: Integer
+    bytes_received: Integer
+    created: Integer
+    updated: Integer
+    chunks_retained: Integer
+
+    transitions status {
+        Connected -> Streaming
+        terminal: Streaming
+    }
+}
+
+-- Server → client message types
+entity ServerMsg {
+    kind: Connected | Ready | Ack | Complete | StreamError
+}
+
+variant Connected : ServerMsg {}
+
+variant Ready : ServerMsg {}
+
+variant Ack : ServerMsg {
+    percentage: Integer                  -- 0-99, non-decreasing
+    chunks_retained: Integer             -- total chunks processed so far
+}
+
+variant Complete : ServerMsg {
+    created: Integer                     -- memories created
+    updated: Integer                     -- memories updated
+    total_chunks: Integer                -- total semantic chunks processed
+}
+
+variant StreamError : ServerMsg {
+    message: String                      -- sanitized error message (no internals leaked)
+}
+
+-- Client → server message types
+entity ClientMsg {
+    kind: Metadata | Content | Done
+}
+
+variant Metadata : ClientMsg {
+    source: String?
+    namespace: String?
+    file_name: String?
+    size_bytes: Integer
+}
+
+variant Content : ClientMsg {
+    data: String                         -- ~64KB of text per frame
+}
+
+variant Done : ClientMsg {}
+
+-- Phase 1: CONNECTION
+-- Server sends connected message immediately after WebSocket upgrade.
+rule WSConnected {
+    when: WSUpgrade()
+
+    ensures: Connected
+    ensures: state.status = Connected
+}
+
+-- Phase 2: METADATA
+-- Client sends file info. Server creates streaming chunker, transitions to streaming.
+rule WSMetadata {
+    when: Metadata(source, namespace, file_name, size_bytes)
+
+    requires: state.status = Connected
+
+    ensures: Ready
+    ensures: state.status = Streaming
+    ensures: state.chunker = MakeStreamChunker()
+    ensures: state.source = source or "websocket-ingest"
+    ensures: state.namespace = namespace
+    ensures: state.size_bytes = size_bytes
+}
+
+-- Phase 4: STREAMING (ping-pong with batched processing)
+--
+-- On each content frame:
+--   1. Feed data to streaming chunker (may emit 0..N semantic chunks)
+--   2. Add emitted chunks to batch buffer
+--   3. While batch buffer >= batch_size:
+--      - Take batch_size chunks, submit to unified flow pipeline
+--        (single LLM extraction, concurrent embed+dedup+decide via IO executor)
+--      - Update created/updated/chunks_retained counts
+--   4. Send ack with progress percentage and chunks_retained
+--
+-- The flow pipeline does NOT call reflect! — the caller decides when to reflect.
+rule WSContent {
+    when: Content(data)
+
+    requires: state.status = Streaming
+
+    -- Feed to streaming chunker
+    let emitted = state.chunker.feed!(data)
+    ensures: state.bytes_received = state.bytes_received + data.length
+    ensures: state.batch_buffer = state.batch_buffer ++ emitted
+
+    -- Process full batches
+    while state.batch_buffer.count >= batch_size:
+        let batch = take(state.batch_buffer, batch_size)
+        let result = core/BatchRetain(batch, state.source, state.namespace)
+        ensures: state.batch_buffer = drop(state.batch_buffer, batch_size)
+        ensures: state.created = state.created + result.creates
+        ensures: state.updated = state.updated + result.updates
+        ensures: state.chunks_retained = state.chunks_retained + batch_size
+
+    -- Ack with progress (capped at 99% until complete)
+    ensures: Ack(
+        percentage: min(99, state.bytes_received * 100 / state.size_bytes),
+        chunks_retained: state.chunks_retained
+    )
+}
+
+-- On done:
+--   1. Flush chunker (may produce one final chunk)
+--   2. batch-retain! remaining chunks in buffer (< batch_size)
+--   3. Reflect once (caller-controlled, not inside batch-retain!)
+--   4. Send complete with final counts
+--   5. Close connection
+rule WSDone {
+    when: Done()
+
+    requires: state.status = Streaming
+
+    -- Flush remaining text from chunker
+    let final_chunk = state.chunker.flush!()
+    if final_chunk != null:
+        ensures: state.batch_buffer = state.batch_buffer ++ [final_chunk]
+
+    -- Process remaining buffer (< batch_size)
+    if state.batch_buffer.count > 0:
+        let result = core/BatchRetain(state.batch_buffer, state.source, state.namespace)
+        ensures: state.created = state.created + result.creates
+        ensures: state.updated = state.updated + result.updates
+        ensures: state.chunks_retained = state.chunks_retained + state.batch_buffer.count
+
+    -- Reflect once after all processing is complete
+    ensures: core/Reflect(state.namespace)
+
+    ensures: Complete(
+        created: state.created,
+        updated: state.updated,
+        total_chunks: state.chunks_retained
+    )
+    ensures: close_connection
+}
+
+-- Error sanitization: internal errors (SqlError, provider errors, timeouts)
+-- are replaced with user-friendly messages. Internal details are logged
+-- server-side but never sent to the client.
+rule WSError {
+    when: InternalError(error)
+
+    ensures: StreamError(message: sanitize_error(error))
+    ensures: close_connection
+}
+
+-- =============================================================================
+-- Batch Retain (caller-controlled reflect)
+-- =============================================================================
+
+-- batch-retain! submits items to the unified core.async.flow pipeline.
+-- This is the SAME pipeline used by single Retain (batch-of-1), Ingest,
+-- and WS Ingest. All code paths converge on retention-flow/submit!.
+--
+-- Pipeline phases (handled by the flow):
+--   1. Prepare context (existing memories for dedup + memory limit check)
+--   2. Batch extraction (single LLM call for all items)
+--   3. Embed-and-dedup (concurrent via IO executor pool, replaces pmap)
+--   4. Decide (concurrent via IO executor pool, replaces pmap)
+--   5. Execute (sequential, serialized DB writes)
+--
+-- IMPORTANT: reflect! is NOT called automatically. The caller decides when
+-- to reflect (e.g., once after all batches are processed, not per-batch).
+rule BatchRetain {
+    when: BatchRetain(items, source, namespace)
+
+    requires: items.count > 0
+
+    -- Submit to unified flow pipeline via retention-flow/submit!
+    let result = flow/submit!({ items: items, namespace: namespace, source: source })
+
+    ensures: { creates, updates, deletes, noops, memory_ids }
+}

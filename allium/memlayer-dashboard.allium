@@ -1,0 +1,31 @@
+-- allium: 3
+-- memlayer-dashboard.allium
+
+-- Scope: Dashboard UI surfaces
+-- Includes: Namespace management
+-- Depends on: memlayer-core.allium (Namespace entity + CRUD rules)
+
+use "./memlayer-core.allium" as core
+
+-- =============================================================================
+-- Surfaces
+-- =============================================================================
+
+-- GET/POST/PUT/DELETE /account/namespaces
+-- Namespace CRUD.
+surface NamespaceManagement {
+    context namespaces: core/Namespace
+
+    exposes:
+        for ns in namespaces:
+            ns.id
+            ns.name
+            ns.created_at
+
+    provides:
+        core/CreateNamespace(name)
+        core/RenameNamespace(ns.id, new_name)
+            when ns in namespaces
+        core/DeleteNamespace(ns.id)
+            when ns in namespaces
+}

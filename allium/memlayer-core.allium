@@ -1,0 +1,836 @@
+-- allium: 3
+-- memlayer-core.allium
+
+-- Scope: Core memory operations
+-- Includes: Memory, SemanticLayer, Relationship, Summary, Retain, Recall,
+--           Reflect, Forget, Ingest, BatchRetain, Namespace CRUD, API surfaces
+-- See also:
+--   - memlayer-dashboard.allium: Dashboard namespace management
+--   - memlayer-ingest.allium: Async ingest jobs, WebSocket streaming
+--   - memlayer-mcp.allium: MCP protocol adapter surface
+
+-- =============================================================================
+-- Configuration
+-- =============================================================================
+
+config {
+    max_recent_memories: Integer = 100
+    llm_summary_threshold: Integer = 20
+    quick_summary_threshold: Integer = 5
+    summary_trigger_threshold: Integer = 5
+    reflect_batch_size: Integer = 15
+    reflect_threshold: Decimal = 0.75            -- fact→concept clustering threshold
+    reflect_cluster_threshold: Decimal = 0.8     -- embedding cosine similarity for clustering
+    superseded_penalty: Decimal = 0.7
+}
+
+-- =============================================================================
+-- Value Types
+-- =============================================================================
+
+value Importance {
+    score: Decimal
+
+    invariant Range { score >= 0.0 and score <= 1.0 }
+}
+
+value Similarity {
+    score: Decimal
+
+    invariant Range { score >= 0.0 and score <= 1.0 }
+}
+
+value Confidence {
+    score: Decimal
+
+    invariant Range { score >= 0.0 and score <= 1.0 }
+}
+
+-- =============================================================================
+-- Entities
+-- =============================================================================
+
+-- Namespace isolates memories between different agents or contexts within a
+-- single user account. Created implicitly on first retain, or explicitly via
+-- CRUD endpoints. UUID _id, human-readable name (validated: [a-z0-9-], 1-64 chars).
+entity Namespace {
+    name: String                        -- human-readable, validated [a-z0-9-]{1,64}
+    created_at: Timestamp
+
+    -- Relationships
+    memories: Memory with namespace = this
+}
+
+-- Four-level semantic hierarchy: Domain > Concept > Fact > Episode
+-- Domain (L0): broad areas ("Programming", "Machine Learning")
+-- Concept (L1): topics within domains ("Type Systems", "Neural Networks")
+-- Fact (L2): specific assertions ("Rust has ownership and borrowing")
+-- Episode (L3): time-bound events ("User asked about monads on 2024-01-15")
+-- Summary: orthogonal metadata layer, child of concept/domain it summarizes
+
+entity Memory {
+    entity_id: EntityID
+    namespace: Namespace                -- isolates memories between agents/contexts
+    content: String
+    layer: Domain | Concept | Fact | Episode | Summary
+    parent: Memory?
+    contradiction_ids: Set<EntityID>    -- bidirectional links to contradicting facts
+    importance: Importance
+    access_count: Integer
+    last_accessed: Timestamp?
+    system_time: Timestamp              -- when we recorded this (transaction time)
+    source: String?                     -- provenance ("conversation", "inferred", etc.)
+    valid_from: Timestamp               -- when the fact was true (valid time start)
+    valid_to: Timestamp?                -- null = still valid; set = superseded
+
+    -- Relationships
+    children: Memory with parent = this
+    relationships_out: Relationship with source = this
+    relationships_in: Relationship with target = this
+
+    -- Derived
+    is_current: valid_to = null
+    is_superseded: valid_to != null
+    is_orphan: parent = null
+    is_valid_at(t): valid_from <= t and (valid_to = null or valid_to > t)
+}
+
+entity Relationship {
+    source: Memory
+    target: Memory
+    relation_type: String   -- free-form, LLM-inferred (e.g. "elaborates", "contradicts", "supports")
+    description: String?                 -- content description of the relationship (from LLM)
+    created_at: Timestamp
+}
+
+-- Summary nodes are Memory entities with layer = Summary.
+-- They live as children of the concept/domain they summarize (via parent_id).
+-- This is orthogonal to the Domain > Concept > Fact > Episode hierarchy.
+-- Summary is NOT in the hierarchy levels — it's a metadata layer.
+
+-- Contradiction tracking: facts that contradict each other are linked
+-- bidirectionally via memory.contradiction_ids (set of UUIDs).
+
+entity Summary {
+    entity_id: EntityID
+    content: String
+    created_at: Timestamp
+    memory_count: Integer
+}
+
+-- =============================================================================
+-- Retain Operation (Unified Flow Pipeline)
+-- =============================================================================
+
+-- All memory persistence (single retain, batch retain, ingest, WS ingest)
+-- flows through a single unified pipeline implemented as a core.async.flow DAG:
+--
+--   prepare-context → batch-extract → embed-and-dedup → decide → execute
+--                          |                |              |
+--                     single LLM call  (fan-out per    (fan-out per
+--                                       extraction)    extraction)
+--
+-- Single retain = batch-of-1 through this pipeline. This unifies 4 code paths
+-- into one. The flow is a long-lived Integrant component; callers submit work
+-- via a correlation-id/promise-chan pattern and await results with timeout.
+--
+-- Pipeline phases:
+--   1. Prepare Context: gather existing memories + check memory limit
+--   2. Batch Extract: single LLM call extracts structured memories from input
+--   3. Embed & Dedup: embed each extraction, find similar existing memories
+--   4. Decide: LLM decides CREATE/UPDATE/FORGET/NOOP per extraction
+--   5. Execute: apply decisions sequentially (DB writes serialized)
+--
+-- Concurrency model:
+--   - IO processes (extract, embed-and-dedup, decide) run on a shared IO
+--     executor pool (configurable thread count, default 8)
+--   - Execute is sequential (single thread) to avoid DB write conflicts
+--   - Multiple concurrent requests interleave on IO stages, serialize at execute
+--   - Each message carries its own correlation-id for result routing
+--
+-- Entity cardinality heuristics:
+--   - Single-valued attributes ("favorite", "primary", "current") → UPDATE on change
+--   - Multi-valued attributes ("likes", "has visited") → CREATE unless explicit replacement
+--   - Explicit change signals ("now", "actually", "switched to") → UPDATE
+--   - Ambiguous → CREATE (never silently lose information)
+--
+-- The decision is NON-DETERMINISTIC. The same input may reasonably produce
+-- different decisions depending on context. We guarantee invariants, not outcomes.
+
+rule Retain {
+    when: Retain(namespace?, entity_id, content, source, system_context, valid_time)
+    -- namespace defaults to "default" when omitted
+    -- system_context: optional system message passed to the LLM during resolution,
+    --   used to steer extraction toward a domain (e.g., "You are an assistant for
+    --   a software company. Extract technical details.")
+    --   NOTE: accepted in the DTO but not wired through the HTTP handler (hardcoded
+    --   to Nothing in retainHandler). Works when called internally (e.g., from ingest).
+    --
+    -- valid_time: when provided, sets memoryValidFrom on created memories.
+    --   Defaults to `now` when omitted.
+
+    -- Implicit namespace creation: if namespace doesn't exist, create it
+    if not exists Namespace where name = namespace:
+        ensures: Namespace.created(name: namespace, created_at: now)
+
+    -- Submit as batch-of-1 to the unified flow pipeline
+    let items = [{ content: content, source: source }]
+
+    -- Phase 1: Prepare context (existing memories for dedup + memory limit check)
+    let context = prepare_context(namespace)
+
+    -- Phase 2: Batch extraction (single LLM call, even for single item)
+    let extractions = extract_memories_batch(items, context)
+
+    -- Phase 3-4: Per-extraction embed-and-dedup + decide (concurrent via IO executor)
+    let decisions =
+        concurrent for extraction in extractions:
+            let embedding = embed(extraction.content)
+            let candidates = semantic_search(embedding, namespace, limit: 5)
+            let subgraph = get_relationships(candidates) + get_distinct_types()
+            let decision = decide_action(extraction, candidates, subgraph)
+            yield { extraction, embedding, candidates, decision }
+
+    -- Phase 5: Execute (sequential, serialized DB writes)
+    ensures:
+        for d in decisions:
+            DecisionMade(entity_id, d.extraction, d.decision, d.embedding)
+}
+
+-- When the decision is CREATE: store a new memory and its embedding.
+-- The embedding from dedup is reused when the decision does not rewrite
+-- content. If the decision provides new content, a fresh embedding is generated.
+rule RetainCreate {
+    when: DecisionMade(entity_id, extraction, decision, dedup_embedding)
+
+    requires: decision.operation = create
+
+    let content = decision.content ?? extraction.content
+    let embedding = if decision.content != null:
+        embed(content)
+    else: dedup_embedding
+
+    ensures: Memory.created(
+        entity_id: entity_id,
+        content: content,
+        layer: decision.layer ?? extraction.layer,
+        parent: decision.parent,
+        importance: extraction.importance,
+        access_count: 0,
+        system_time: now,
+        source: extraction.source,
+        valid_from: extraction.valid_time ?? now,
+        valid_to: null
+    )
+    ensures: store_embedding(new_memory, embedding)
+    ensures:
+        for rel in decision.relationships:
+            Relationship.created(
+                source: new_memory,
+                target: rel.target,
+                relation_type: rel.type,
+                created_at: now
+            )
+    ensures: decision.reason != ""
+}
+
+-- When the decision is UPDATE: soft-delete old version, create new version.
+-- Entity identity is preserved. Embedding reuse follows the same logic as CREATE.
+rule RetainUpdate {
+    when: DecisionMade(entity_id, extraction, decision, dedup_embedding)
+
+    requires: decision.operation = update
+    requires: exists decision.target
+
+    let old_memory = decision.target
+    let content = decision.content ?? old_memory.content
+    let embedding = if decision.content != null:
+        embed(content)
+    else: dedup_embedding
+
+    -- Soft-delete: set valid_to on old version (preserves history)
+    ensures: old_memory.valid_to = now
+
+    -- Create new version with same entity_id
+    ensures: Memory.created(
+        entity_id: old_memory.entity_id,
+        content: content,
+        layer: old_memory.layer,
+        parent: old_memory.parent,
+        importance: old_memory.importance,
+        access_count: old_memory.access_count,
+        system_time: now,
+        source: old_memory.source,
+        valid_from: extraction.valid_time ?? now,
+        valid_to: null
+    )
+    ensures: store_embedding(new_memory, embedding)
+    ensures:
+        for rel in decision.relationships:
+            Relationship.created(
+                source: new_memory,
+                target: rel.target,
+                relation_type: rel.type,
+                created_at: now
+            )
+    ensures: decision.reason != ""
+}
+
+-- When the decision is FORGET: soft-delete the target memory.
+-- Used when the LLM determines content should be removed
+-- (e.g., user says "forget that Alice likes pizza").
+rule RetainForget {
+    when: DecisionMade(entity_id, extraction, decision, _)
+
+    requires: decision.operation = forget
+    requires: exists decision.target
+
+    let target_memory = decision.target
+
+    -- Invalidate the memory (set valid_to, preserving history)
+    ensures: target_memory.valid_to = now
+    ensures: decision.reason != ""
+}
+
+-- When the decision is NOOP: no changes.
+rule RetainNoop {
+    when: DecisionMade(entity_id, extraction, decision, _)
+
+    requires: decision.operation = noop
+
+    ensures: decision.reason != ""
+}
+
+-- Summary regeneration is triggered when enough new memories are created.
+rule SummaryRegeneration {
+    when: RetainCompleted(entity_id, create_count)
+
+    requires: create_count > config.summary_trigger_threshold
+
+    ensures: RetainSummaryTriggered(entity_id)
+}
+
+-- =============================================================================
+-- Preparation: Context Summary
+-- =============================================================================
+
+-- When an entity has more memories than the LLM threshold, generate an LLM summary.
+-- Between quick and LLM thresholds, generate a statistical summary.
+-- Below quick threshold, no summary.
+
+deferred entity_summary    -- LLM-generated or statistical, based on memory count thresholds
+
+-- =============================================================================
+-- Recall Operation
+-- =============================================================================
+
+-- Recall retrieves memories via semantic similarity search.
+-- Three modes: SemanticSearch, ContextualSearch, TemporalSearch.
+
+rule Recall {
+    when: Recall(namespace?, query, entity_id, layer, limit, mode, min_score, as_of)
+    -- namespace defaults to "default" when omitted
+
+    -- Embed the query, search for similar memories (scoped to namespace)
+    let candidates = semantic_search(query, entity_id, namespace: namespace, limit: limit * 2)
+
+    -- Filter by minimum similarity score
+    let scored = candidates where similarity >= min_score
+
+    -- Filter by layer (if specified)
+    let layer_filtered = if layer != null:
+        scored where memory.layer = layer
+    else: scored
+
+    -- Filter by entity (if specified)
+    let entity_filtered = if entity_id != null:
+        layer_filtered where memory.entity_id = entity_id
+    else: layer_filtered
+
+    -- Filter by temporal validity (if as_of specified)
+    let temporal_filtered = if as_of != null:
+        entity_filtered where memory.is_valid_at(as_of)
+    else: entity_filtered
+
+    -- Apply temporal re-ranking: superseded memories get a score penalty
+    let reranked = apply_superseded_penalty(temporal_filtered)
+
+    -- Take final limit
+    let results = take(reranked, limit)
+
+    -- Optionally expand context based on mode
+    ensures:
+        for r in results:
+            r.memory.access_count = r.memory.access_count + 1
+    ensures: RecallResults(results, mode)
+}
+
+-- Superseded memories (valid_to set) receive a 30% score penalty.
+-- This ensures current information ranks higher than outdated,
+-- while historical data can still appear.
+rule SupersededPenalty {
+    when: apply_superseded_penalty(match)
+
+    if match.memory.is_superseded:
+        ensures: match.score = match.score * config.superseded_penalty
+}
+
+-- Graph expansion: when expand-graph is true, each matched memory gets
+-- augmented with graph context. This replaces the old mode-based expansion.
+--
+-- For each matched memory:
+--   UP:       walk parent chain to domain, collecting ancestors + their summaries
+--   DOWN:     fetch sibling facts under the same parent (excluding summaries)
+--   SIDEWAYS: follow relationship edges to related memories (with descriptions)
+--
+-- Graph proximity re-ranking: memories that share a parent get a distance bonus,
+-- so topically clustered results rank higher.
+--
+-- The response includes a top-level :graph key with deduplicated aggregate context:
+--   {:concepts [...] :summaries [...] :relationships [...]}
+
+rule RecallGraphExpansion {
+    when: expand_graph = true
+
+    for memory in results:
+        -- Walk UP: follow parent_id chain to root
+        let ancestors = walk_up(memory)
+        let summaries = for a in ancestors: get_summaries(a)
+
+        -- Walk DOWN: sibling facts under same parent
+        let siblings = get_siblings(memory.parent, exclude: memory, exclude_layer: Summary)
+
+        -- Walk SIDEWAYS: follow relationship edges
+        let relationships = get_relationships(memory)
+        let related = for r in relationships: get_other_end(r, memory)
+
+    -- Re-rank with graph proximity bonus
+    ensures: apply_graph_reranking(results)
+    ensures: aggregate_graph_context(results)
+}
+
+-- After retrieval and ranking, recall always generates a natural language
+-- answer from the matched memories and graph context. Skipped only when
+-- no memories match (nothing to generate from).
+rule RecallAnswerGeneration {
+    when: results.count > 0
+
+    let context = format_memories(results) + format_graph(graph_context)
+    let answer = llm_generate_answer(query, context)  -- plain text, not JSON
+
+    ensures: response.answer = answer
+    ensures: response.memories = results  -- raw memories always present
+}
+
+-- =============================================================================
+-- Reflect Operation
+-- =============================================================================
+
+-- Reflect is the "thinking" operation. It builds additive structure on top of
+-- the knowledge graph without modifying or deleting existing facts.
+--
+-- 4 composed phases, run in sequence:
+--   1. Organize:  orphan facts → concepts, orphan concepts → domains (LLM-driven, context-aware)
+--   2. Summarize: create summary nodes for concepts/domains that lack one
+--   3. Connect:   discover cross-concept relationships via vector similarity + LLM
+--   4. Curate:    identify contradictions between facts within concepts
+--
+-- Callers can run a subset of phases via the :phases parameter.
+-- Principle: facts are sacred — reflect only creates new nodes and edges on top.
+
+rule Reflect {
+    when: Reflect(namespace?, query, dry_run, phases?)
+    -- namespace defaults to "default" when omitted
+    -- phases: optional subset of ["organize", "summarize", "connect", "curate"]
+
+    if dry_run:
+        let orphan_facts = Memory where layer = Fact and parent = null and namespace.name = namespace
+        ensures: ReflectResult(facts_processed: orphan_facts.count, dry_run: true)
+    else:
+        let active_phases = phases ?? ["organize", "summarize", "connect", "curate"]
+        let organize_result  = if "organize"  in active_phases: ReflectOrganize(namespace)
+        let summarize_result = if "summarize" in active_phases: ReflectSummarize(namespace)
+        let connect_result   = if "connect"   in active_phases: ReflectConnect(namespace)
+        let curate_result    = if "curate"    in active_phases: ReflectCurate(namespace)
+
+        ensures: ReflectResult(
+            facts_processed: organize_result.facts_processed,
+            concepts_created: organize_result.concepts_created,
+            domains_created: organize_result.domains_created,
+            organize: organize_result,
+            summarize: summarize_result,
+            connect: connect_result,
+            curate: curate_result
+        )
+}
+
+-- Phase 1: Organize — assign orphan facts to concepts, orphan concepts to domains.
+-- Context-aware: the LLM sees existing concepts/domains and decides whether to
+-- assign to an existing one or propose a new one.
+rule ReflectOrganize {
+    when: ReflectOrganize(namespace)
+
+    let orphan_facts = Memory where layer = Fact and parent = null and namespace.name = namespace
+    let existing_concepts = Memory where layer = Concept and namespace.name = namespace
+
+    if orphan_facts.count = 0:
+        ensures: { facts_processed: 0, concepts_created: 0, concepts_reused: 0, domains_created: 0 }
+    else:
+        -- Batch orphans and send to LLM with existing concepts as context
+        let batches = chunk(orphan_facts, config.reflect_batch_size)
+        for batch in batches:
+            let llm_result = organize_facts(batch, existing_concepts)
+            for group in llm_result.groups:
+                if group.concept_id exists:
+                    -- Assign facts to existing concept
+                    for fact_index in group.fact_indices:
+                        batch[fact_index].parent = group.concept_id
+                else:
+                    -- Create new concept, assign facts
+                    let new_concept = Memory.created(
+                        content: group.concept_content,
+                        layer: Concept,
+                        source: "reflect"
+                    )
+                    for fact_index in group.fact_indices:
+                        batch[fact_index].parent = new_concept
+
+        -- Then group orphan concepts into domains (same pattern)
+        let orphan_concepts = Memory where layer = Concept and parent = null and namespace.name = namespace
+        if orphan_concepts.count >= 2:
+            let existing_domains = Memory where layer = Domain and namespace.name = namespace
+            let llm_result = organize_concepts(orphan_concepts, existing_domains)
+            for group in llm_result.groups:
+                if group.domain_id exists:
+                    for concept_index in group.concept_indices:
+                        orphan_concepts[concept_index].parent = group.domain_id
+                else:
+                    let new_domain = Memory.created(
+                        content: group.domain_content,
+                        layer: Domain,
+                        source: "reflect"
+                    )
+                    for concept_index in group.concept_indices:
+                        orphan_concepts[concept_index].parent = new_domain
+}
+
+-- Phase 2: Summarize — create Summary-layer children for concepts/domains.
+-- Only creates summaries for nodes that don't already have one.
+-- The summary is a child Memory with layer=Summary and parent_id pointing
+-- to the concept/domain it summarizes.
+rule ReflectSummarize {
+    when: ReflectSummarize(namespace)
+
+    let concepts = Memory where layer = Concept and namespace.name = namespace
+    let domains = Memory where layer = Domain and namespace.name = namespace
+    let nodes = (concepts ++ domains) where not has_summary_child
+
+    for node in nodes:
+        let children = Memory where parent = node
+        if children.count > 0:
+            let summary_text = summarize_memories(node, children)  -- LLM call
+            ensures: Memory.created(
+                content: summary_text,
+                layer: Summary,
+                parent: node,
+                source: "reflect"
+            )
+
+    ensures: { summaries_created: count of created summaries }
+}
+
+-- Phase 3: Connect — discover cross-concept relationships using vector similarity + LLM.
+-- For each concept, find nearest concept neighbors via embedding search.
+-- Deduplicate pairs, skip pairs that already have a relationship.
+-- Ask LLM to evaluate each pair and describe the relationship.
+rule ReflectConnect {
+    when: ReflectConnect(namespace)
+
+    let concepts = Memory where layer = Concept and namespace.name = namespace
+
+    if concepts.count < 2:
+        ensures: { relationships_created: 0 }
+    else:
+        -- Find candidate pairs by vector proximity
+        let pairs = for c in concepts:
+            let neighbors = vector_search(c.embedding, top_k: 5, filter: concepts)
+            yield deduplicated [c, neighbor] pairs
+
+        -- Filter out existing relationships
+        let new_pairs = pairs where not exists Relationship between pair
+
+        -- Batch pairs and ask LLM to evaluate
+        let batches = chunk(new_pairs, 5)
+        for batch in batches:
+            let llm_result = discover_relationships(batch)  -- LLM call
+            for rel in llm_result.relationships:
+                ensures: Relationship.created(
+                    source: batch[rel.pair_index].a,
+                    target: batch[rel.pair_index].b,
+                    relation_type: rel.type,
+                    strength: rel.confidence,
+                    description: rel.description
+                )
+
+        ensures: { relationships_created: count of created relationships }
+}
+
+-- Phase 4: Curate — identify contradictions between facts within concepts.
+-- Within each concept, find close fact pairs by embedding similarity.
+-- Skip pairs already flagged as contradictions.
+-- Ask LLM to evaluate genuine contradictions (not merely different facts).
+-- Flag contradictions bidirectionally via memory.contradiction_ids.
+rule ReflectCurate {
+    when: ReflectCurate(namespace)
+
+    let concepts = Memory where layer = Concept and namespace.name = namespace
+
+    if concepts.count = 0:
+        ensures: { contradictions_found: 0 }
+    else:
+        for concept in concepts:
+            let facts = Memory where parent = concept and layer = Fact
+            if facts.count >= 2:
+                -- Find close pairs by vector similarity
+                let pairs = find_close_pairs(facts)
+                let new_pairs = pairs where not already_contradicted(pair.a, pair.b)
+
+                let batches = chunk(new_pairs, 10)
+                for batch in batches:
+                    let llm_result = detect_contradictions(batch)  -- LLM call
+                    for c in llm_result.contradictions:
+                        let [a, b] = batch[c.pair_index]
+                        ensures: a.contradiction_ids += b.entity_id
+                        ensures: b.contradiction_ids += a.entity_id
+
+        ensures: { contradictions_found: total count }
+}
+
+-- =============================================================================
+-- Forget Operation
+-- =============================================================================
+
+-- Forget removes an entity from all active queries: memories, relationships,
+-- closure entries, access counts, and summaries are deleted from the current
+-- view. Datahike retracts the data (logical delete).
+--
+-- For true permanent removal (GDPR compliance), a future Evict operation
+-- will purge data from the transaction log. Evict should NOT be exposed
+-- to agents via MCP.
+
+rule Forget {
+    when: Forget(namespace?, entity_id)
+    -- namespace defaults to "default" when omitted
+
+    let all_versions = Memory with entity_id = entity_id and namespace.name = namespace
+    let all_relationships =
+        Relationship with source in all_versions
+        or Relationship with target in all_versions
+    let summary = Summary with entity_id = entity_id
+
+    ensures:
+        for m in all_versions:
+            not exists m
+    ensures:
+        for r in all_relationships:
+            not exists r
+    ensures:
+        if exists summary:
+            not exists summary
+    ensures: ForgetResult(
+        entity_id: entity_id,
+        memories_removed: all_versions.count,
+        relationships_removed: all_relationships.count
+    )
+}
+
+-- =============================================================================
+-- Ingest Operation (Bulk Import)
+-- =============================================================================
+
+-- Ingest processes multiple content items through the Retain pipeline,
+-- all sharing a single caller-supplied entity_id. Unlike Retain (which
+-- auto-generates entity_id per call), Ingest gives the caller explicit
+-- control over entity grouping.
+--
+-- Items are processed sequentially. Each succeeds or fails independently
+-- (partial success model). A failing item does not abort the batch.
+
+rule Ingest {
+    when: Ingest(entity_id, items)
+
+    for item in items:
+        -- Each item runs the full Retain pipeline independently.
+        -- Failures are captured per-item, not propagated.
+        ensures: Retain(entity_id, item.content, item.source, valid_time: null)
+
+    ensures: IngestResult(
+        processed: count of successful items,
+        failed: count of failed items,
+        results: per-item(success, memory_id, error)
+    )
+}
+
+-- =============================================================================
+-- Batch Retain
+-- =============================================================================
+
+-- BatchRetain submits multiple content items to the unified flow pipeline.
+-- This is the SAME pipeline as single Retain (which is batch-of-1).
+--
+-- All items go through a single LLM extraction call, preserving chronological
+-- context and cross-references. The LLM sees items in order, naturally
+-- deduplicating across items.
+--
+-- Token savings: O(1) extraction calls instead of O(N), plus concurrent
+-- embed-and-dedup/decision phases via the IO executor pool.
+--
+-- Reflect runs after all items complete (caller-controlled, not per-batch).
+
+rule BatchRetain {
+    when: BatchRetain(namespace, items)
+
+    -- Implicit namespace creation (same as Retain)
+    if not exists Namespace where name = namespace:
+        ensures: Namespace.created(name: namespace, created_at: now)
+
+    -- Submit items to the unified flow pipeline (same as Retain, but N items)
+    -- The flow handles all phases: prepare-context → batch-extract →
+    -- embed-and-dedup → decide → execute
+
+    -- Phase 1: Shared context preparation (once)
+    let context = prepare_context(namespace)
+
+    -- Phase 2: Batch extraction (single LLM call for all items)
+    let extractions = extract_memories_batch(items, context)
+
+    -- Phase 3: Concurrent embed-and-dedup (IO executor pool)
+    -- Phase 4: Concurrent decide (IO executor pool)
+    let decisions =
+        concurrent for extraction in extractions:
+            let embedding = embed(extraction.content)
+            let candidates = semantic_search(embedding, limit: 5)
+            let decision = decide_action(extraction, candidates)
+            yield { extraction, embedding, candidates, decision }
+
+    -- Phase 5: Sequential execution (serialized DB writes)
+    let results =
+        for d in decisions:
+            DecisionMade(entity_id, d.extraction, d.decision, d.embedding)
+
+    -- Phase 6: Best-effort reflect (caller-controlled)
+    let reflect_result = Reflect(namespace, query: null, dry_run: false)
+
+    ensures: BatchRetainResult(
+        results: per-item(response, error),
+        reflect: reflect_result?
+    )
+}
+
+-- =============================================================================
+-- Namespace CRUD
+-- =============================================================================
+
+rule CreateNamespace {
+    when: CreateNamespace(name)
+
+    requires: not exists Namespace where name = name
+
+    ensures: Namespace.created(name: name, created_at: now)
+}
+
+rule RenameNamespace {
+    when: RenameNamespace(namespace_id, new_name)
+
+    let ns = Namespace where id = namespace_id
+    requires: exists ns
+    requires: not exists Namespace where name = new_name
+
+    ensures: ns.name = new_name
+}
+
+-- Delete namespace record and clean up Proximum embeddings.
+-- Datahike memory data is left in place (logical delete); it is no longer
+-- reachable because the namespace record is gone.
+rule DeleteNamespace {
+    when: DeleteNamespace(namespace_id)
+
+    let ns = Namespace where id = namespace_id
+    requires: exists ns
+
+    ensures: not exists ns
+    -- Proximum embeddings with this namespace are deleted
+}
+
+-- =============================================================================
+-- API Surfaces: Memory Exploration
+-- =============================================================================
+
+-- GET /api/v1/memories/:id/layer/:layer
+-- Navigate the hierarchy to a specific layer from any starting memory.
+surface LayerTraversal {
+    exposes:
+        -- If current layer == target: return that memory
+        -- If current layer < target (going down): traverse descendants
+        -- If current layer > target (going up): traverse ancestors
+        memories_at_layer(memory_id, target_layer)
+}
+
+-- GET /api/v1/entities/:entity_id/history
+-- Returns all memory versions for an entity, including superseded ones.
+-- Sorted by valid_from descending (most recent first).
+surface EntityHistory {
+    exposes:
+        all_versions(entity_id)
+}
+
+-- POST /api/v1/relationships/batch
+-- Given a list of memory IDs, returns all relationships for those memories.
+surface RelationshipBatch {
+    provides:
+        GetRelationshipsBatch(memory_ids: List<MemoryID>)
+}
+
+-- =============================================================================
+-- Retain Response
+-- =============================================================================
+
+-- The retain response includes a usage breakdown when LLM calls are made.
+-- Usage tracks tokens consumed per pipeline step:
+--   extraction: tokens for the fact extraction LLM call
+--   decision: tokens for the CREATE/UPDATE/FORGET/NOOP decision LLM call
+--   embedding: tokens for embedding generation (via OpenAI)
+--   total_tokens: sum of all steps
+
+value UsageBreakdown {
+    extraction: TokenUsage?
+    decision: TokenUsage?
+    embedding: TokenUsage?
+    total_tokens: Integer
+}
+
+value TokenUsage {
+    prompt_tokens: Integer
+    completion_tokens: Integer
+    total_tokens: Integer
+}
+
+-- =============================================================================
+-- Temporal Queries
+-- =============================================================================
+
+-- Every memory change is recorded as a Datahike transaction. The old version
+-- is retracted and remains queryable through history endpoints and as_of
+-- filtering.
+--
+-- This enables:
+--   - "What did we know at time T?" (as_of query on transaction history)
+--   - Full audit trail of all changes
+
+-- =============================================================================
+-- Open Questions
+-- =============================================================================
+
+open question "retainSystem (system_context) is accepted in the DTO but hardcoded to Nothing in the HTTP handler. Should it be wired through?"
+open question "Memory bank / namespace isolation between agents — design needed"
+

@@ -1,0 +1,15 @@
+{:lint-as {clojure.test.check.clojure-test/defspec clojure.test/deftest}
+ :linters
+ {:unresolved-var
+  {:exclude [datahike.api/transact
+             datahike.api/database-exists?
+             datahike.api/create-database
+             datahike.api/connect
+             datahike.api/q
+             datahike.api/history
+             datahike.api/release
+             datahike.api/listen
+             datahike.api/unlisten
+             datahike.api/delete-database
+             datahike.api/as-of
+             datahike.api/pull]}}}

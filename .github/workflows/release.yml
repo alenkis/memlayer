@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on master
+        run: |
+          TAG_COMMIT=$(git rev-list -n 1 ${{ github.ref }})
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/master; then
+            echo "::error::Tag must be on the master branch"
+            exit 1
+          fi
+
+      - name: Set up Java 22
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '22'
+
+      - name: Install Clojure CLI
+        uses: DeLaGuardo/setup-clojure@13.5
+        with:
+          cli: latest
+          bb: latest
+
+      - name: Cache Clojure deps
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+          key: clj-deps-${{ hashFiles('deps.edn') }}
+          restore-keys: clj-deps-
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build uberjar
+        run: bb uberjar
+        env:
+          JAVA_CMD: java
+
+      - name: Package release tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p "memlayer-${VERSION}/bin"
+          cp target/memlayer.jar "memlayer-${VERSION}/bin/memlayer.jar"
+          cp bin/memlayer "memlayer-${VERSION}/bin/memlayer"
+          chmod +x "memlayer-${VERSION}/bin/memlayer"
+          tar czf "memlayer-${VERSION}.tar.gz" "memlayer-${VERSION}"
+          shasum -a 256 "memlayer-${VERSION}.tar.gz" > "memlayer-${VERSION}.tar.gz.sha256"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            echo "Release ${{ github.ref_name }} already exists — uploading assets"
+            gh release upload "${{ github.ref_name }}" \
+              "memlayer-${VERSION}.tar.gz" \
+              "memlayer-${VERSION}.tar.gz.sha256" \
+              --clobber
+          else
+            gh release create "${{ github.ref_name }}" \
+              --title "${{ github.ref_name }}" \
+              --generate-notes \
+              "memlayer-${VERSION}.tar.gz" \
+              "memlayer-${VERSION}.tar.gz.sha256"
+          fi
+
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA256=$(cat "memlayer-${VERSION}.tar.gz.sha256" | awk '{print $1}')
+          gh workflow run update-formula.yml \
+            --repo alenkis/homebrew-memlayer \
+            --field version="${VERSION}" \
+            --field sha256="${SHA256}"

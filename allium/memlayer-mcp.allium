@@ -1,0 +1,101 @@
+-- allium: 3
+-- memlayer-mcp.allium
+
+-- Scope: MCP (Model Context Protocol) adapter surface
+-- The MCP server is a thin protocol translation layer that exposes
+-- core memory operations as MCP tools over JSON-RPC 2.0.
+-- It adds no domain logic; it only maps protocol <-> HTTP API.
+--
+-- Two transports: stdio (single client) and HTTP (session-based).
+
+use "./memlayer-core.allium" as core
+
+-- =============================================================================
+-- Entities
+-- =============================================================================
+
+-- HTTP transport maintains per-connection sessions in process memory.
+-- Stdio transport has no session concept (single implicit client).
+-- Sessions are not persisted; lost on server restart.
+entity MCPSession {
+    created_at: Timestamp
+}
+
+-- =============================================================================
+-- Surface
+-- =============================================================================
+
+-- The MCP surface exposes five tools, one per core operation.
+-- Each tool maps directly to a core HTTP endpoint with no transformation.
+-- Tool descriptions are written as LLM-facing guidance.
+
+surface MCPTools {
+    facing agent: MCPSession
+
+    provides:
+        core/Retain(namespace?, content, source)
+            -- required: content; optional: namespace (default "default"), source
+        core/BatchRetain(namespace, items)
+            -- required: namespace, items (array of {content, source?})
+            -- Processes all items concurrently, then reflects.
+        core/Recall(namespace?, query, limit, threshold?, as_of?, layer?, expand_graph?)
+            -- required: query
+            -- optional: namespace (default "default"), limit (default 10),
+            --   threshold (default 0.5), as_of (ISO-8601 temporal query),
+            --   layer ("domain"|"concept"|"fact"|"episode"),
+            --   expand_graph (include ancestors and related memories)
+        core/Reflect(namespace?, query)
+            -- optional: namespace (default "default"), query
+            -- Note: handler also accepts `dry_run` (boolean) but it is
+            -- deliberately not advertised in the tool schema.
+        core/Forget(namespace?, entity_id)
+            -- required: entity_id; optional: namespace (default "default")
+
+    guidance:
+        "ALWAYS call memlayer_recall before answering user questions"
+        "Call memlayer_retain to save new information the user shares"
+        "Use memlayer_forget only when explicitly asked to delete data"
+}
+
+-- =============================================================================
+-- Session Lifecycle (HTTP transport only)
+-- =============================================================================
+
+-- POST /mcp with method "initialize" (no session header required).
+-- Creates a session, returns Mcp-Session-Id header.
+rule CreateMCPSession {
+    when: MCPInitialize()
+
+    ensures: MCPSession.created(
+        created_at: now
+    )
+    ensures: MCPSessionCreated(session_id)
+}
+
+-- DELETE /mcp with Mcp-Session-Id header.
+-- Removes session from process memory.
+rule DestroyMCPSession {
+    when: MCPSessionDelete(session)
+
+    ensures: not exists session
+}
+
+-- =============================================================================
+-- Protocol
+-- =============================================================================
+
+-- JSON-RPC 2.0 methods:
+--   "initialize"   -> server info + capabilities + session creation
+--   "initialized"  -> notification acknowledgement (202, no response body)
+--   "tools/list"   -> returns tool definitions
+--   "tools/call"   -> dispatches to core operation via MCPClient HTTP bridge
+--   other          -> error -32601 "Method not found"
+--
+-- Protocol version: "2025-03-26"
+--
+-- Response format negotiated via Accept header:
+--   text/event-stream          -> SSE wrapper (event: message\ndata: <json>)
+--   application/json (default) -> plain JSON-RPC response
+--
+-- Tool call errors surface as MCP tool errors (isError: true),
+-- not JSON-RPC protocol errors.

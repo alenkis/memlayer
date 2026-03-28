@@ -1,0 +1,164 @@
+{:paths ["bb"]
+
+ :tasks
+ {;; ---- Development ----
+
+  build
+  {:doc  "Resolve deps and compile project"
+   :task (do (shell "clojure" "-P" "-M:test")
+             (shell "clojure" "-M:test" "--print-test-plan" "--focus" ":unit"))}
+
+  server
+  {:doc      "Start memlayer (API + dashboard) on a single port + nREPL"
+   :depends  [dashboard-ensure]
+   :requires ([tasks :as t])
+   :task     (t/shell-env "clojure" "-M:dev" "-m" "dev-main")}
+
+  dev
+  {:doc      "Start API + dashboard hot-reload + CSS watcher (for contributors)"
+   :depends  [shadow-cljs-edn]
+   :requires ([tasks :as t])
+   :task     (do
+               (shell "npm" "run" "build:css")
+               (let [srv  (future (t/shell-env "clojure" "-M:dev" "-m" "dev-main"))
+                     dash (future (shell "npx" "shadow-cljs" "-A:dashboard" "watch" "dashboard"))
+                     css  (future (shell "npm" "run" "dev:css"))]
+                 (deref srv)))}
+
+  repl-server
+  {:doc      "Start dev REPL with socket server on port 7888"
+   :requires ([tasks :as t])
+   :task     (t/shell-env "clojure"
+                          "-J--add-modules" "-Jjdk.incubator.vector"
+                          "-J--enable-native-access=ALL-UNNAMED"
+                          "-J-Dclojure.server.repl={:port 7888 :accept clojure.core.server/repl}"
+                          "-M:dev")}
+
+  mcp
+  {:doc      "Start MCP stdio server"
+   :requires ([tasks :as t])
+   :task     (t/shell-env "clojure" "-M:mcp")}
+
+  ;; ---- Code Quality ----
+
+  fmt
+  {:doc  "Format Clojure source files"
+   :task (shell "clojure" "-M:fmt" "fix" "src" "test" "dev")}
+
+  fmt-check
+  {:doc  "Check Clojure formatting (no changes)"
+   :task (shell "clojure" "-M:fmt" "check" "src" "test" "dev")}
+
+  lint
+  {:doc  "Run clj-kondo linter"
+   :task (shell "clj-kondo" "--lint" "src" "test" "--fail-level" "warning")}
+
+  test
+  {:doc  "Run all unit tests"
+   :task (shell "clojure" "-M:test" "--focus" ":unit")}
+
+  test-cljs
+  {:doc     "Run ClojureScript dashboard unit tests"
+   :depends [shadow-cljs-edn]
+   :task    (shell "clojure" "-A:dashboard" "-M" "-m" "shadow.cljs.devtools.cli" "compile" "test")}
+
+  check
+  {:doc     "Build, lint, and test"
+   :depends [build fmt-check lint test test-cljs]}
+
+  test-focus
+  {:doc  "Run specific test namespace (bb test-focus <ns>)"
+   :task (let [focus (or (first *command-line-args*)
+                         (System/getenv "FOCUS"))]
+           (when-not focus
+             (println "Usage: bb test-focus <namespace>")
+             (System/exit 1))
+           (shell "clojure" "-M:test" "--focus" focus))}
+
+  test-integration
+  {:doc      "Run integration tests (requires .env with API keys)"
+   :requires ([tasks :as t])
+   :task     (t/shell-env "clojure" "-M:integration")}
+
+  test-e2e
+  {:doc     "Run Playwright e2e tests (requires running server + dashboard-dev)"
+   :depends [config-json]
+   :task    (shell "npx" "playwright" "test" "--reporter=list,json")}
+
+  test-e2e-ui
+  {:doc     "Open Playwright interactive UI for e2e tests"
+   :depends [config-json]
+   :task    (shell "npx" "playwright" "test" "--ui")}
+
+  test-full
+  {:doc     "Run unit + integration + e2e tests (expensive — uses real providers)"
+   :depends [check test-integration test-e2e]}
+
+  ;; ---- Dashboard ----
+
+  dashboard-deps
+  {:doc  "Install npm dependencies for dashboard"
+   :task (shell "npm" "install")}
+
+  config-json
+  {:doc      "Export config.edn as JSON for e2e tests and tooling"
+   :requires ([tasks :as t])
+   :task     (when (t/stale? "config.json" ["resources/config.edn" "bin/export-config.bb" ".env"])
+               (t/shell-env "bash" "-c" "bb bin/export-config.bb json > config.json"))}
+
+  shadow-cljs-edn
+  {:doc      "Generate shadow-cljs.edn from config.edn"
+   :requires ([tasks :as t])
+   :task     (when (t/stale? "shadow-cljs.edn" ["resources/config.edn" "bin/export-config.bb" ".env"])
+               (t/shell-env "bash" "-c" "bb bin/export-config.bb shadow-edn > shadow-cljs.edn"))}
+
+  dashboard-dev
+  {:doc     "Start CLJS dashboard dev server (ports from config.edn)"
+   :depends [shadow-cljs-edn]
+   :task    (do (shell "npm" "run" "build:css")
+               (shell "npx" "shadow-cljs" "-A:dashboard" "watch" "dashboard"))}
+
+  dashboard-css
+  {:doc  "Watch and compile Tailwind CSS"
+   :task (shell "npm" "run" "dev:css")}
+
+  dashboard-build
+  {:doc     "Production build of CLJS dashboard"
+   :depends [shadow-cljs-edn dashboard-deps]
+   :task    (do (shell "npm" "run" "build:css")
+               (shell "npx" "shadow-cljs" "-A:dashboard" "release" "dashboard"))}
+
+  dashboard-ensure
+  {:doc      "Build dashboard if not already built"
+   :requires ([babashka.fs :as fs])
+   :task     (when-not (fs/exists? "resources/public/js/compiled/main.js")
+               (run 'dashboard-build))}
+
+  ;; ---- Build / Distribution ----
+
+  uberjar
+  {:doc              "Build distributable uberjar (includes dashboard)"
+   :override-builtin true
+   :depends          [dashboard-build]
+   :task             (shell "clojure" "-T:build" "uber")}
+
+  clean
+  {:doc  "Remove build artifacts"
+   :task (shell "clojure" "-T:build" "clean")}
+
+  native-uberjar
+  {:doc  "Build uberjar for GraalVM native-image"
+   :task (shell "clojure" "-T:build" "native-uber")}
+
+  native-image
+  {:doc     "Build GraalVM native binary from uberjar"
+   :depends [native-uberjar]
+   :task    (shell "native-image"
+                   "-jar" "target/memlayer.jar"
+                   "-o" "target/memlayer"
+                   "--no-fallback"
+                   "--initialize-at-build-time"
+                   "--enable-url-protocols=http,https"
+                   "-H:+ReportExceptionStackTraces"
+                   "-J--add-modules=jdk.incubator.vector"
+                   "-J--enable-native-access=ALL-UNNAMED")}}}

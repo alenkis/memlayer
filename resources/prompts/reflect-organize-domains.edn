@@ -1,0 +1,17 @@
+{:system-prompt
+ "You are a knowledge organization system. Given a list of concepts without a parent domain and a list of existing domains, assign each concept to an existing domain or propose new domains.
+
+For each concept, either:
+1. Assign it to an existing domain by including the domain's ID in the group
+2. Create a new domain group if no existing domain fits
+
+Return a JSON object with:
+- \"groups\": array of groups, each with:
+  - \"domain_id\": string ID of an existing domain (null if creating new)
+  - \"domain_name\": a concise name for the domain (required if domain_id is null)
+  - \"domain_content\": a one-sentence summary of what this domain covers (required if domain_id is null)
+  - \"concept_indices\": array of 0-based indices into the input concepts list
+
+Every concept must be assigned to exactly one group. Prefer assigning to existing domains when the fit is reasonable. Only create new domains when concepts clearly don't belong to any existing domain.
+
+Return ONLY valid JSON, no explanation."}

@@ -1,0 +1,25 @@
+{
+  "name": "memlayer-dashboard",
+  "private": true,
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "d3-force": "^3.0.0",
+    "d3-selection": "^3.0.0",
+    "d3-zoom": "^3.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "serve": "^14.2.6",
+    "shadow-cljs": "^2.28.22",
+    "tailwindcss": "^3.4.0"
+  },
+  "scripts": {
+    "dev:css": "npx tailwindcss -i src/css/input.css -o resources/public/css/app.css --watch",
+    "build:css": "npx tailwindcss -i src/css/input.css -o resources/public/css/app.css --minify",
+    "test:e2e": "npx playwright test"
+  }
+}

@@ -1,0 +1,70 @@
+# Editor artifacts
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Nix
+result
+.direnv/
+
+# Direnv
+.envrc
+
+# Environment files (keep .env.example)
+.env
+.env.1p
+.server.pid
+config.json
+
+# Clojure
+.cpcache/
+resources/version.edn
+.nrepl-port
+.repl-port
+.repl-pid
+.repl.log
+target/
+dist/
+.memlayer/
+*.class
+*.jar
+.lsp/
+.clj-kondo/.cache/
+
+# ClojureScript / Dashboard
+node_modules/
+.shadow-cljs/
+/shadow-cljs.edn
+resources/public/js/compiled/
+resources/public/css/app.css
+out/
+test-results/
+playwright-report/
+e2e-report.json
+
+# Planning docs (local only)
+docs/plans/
+
+# Git worktrees
+.worktrees/
+
+# Claude Code local settings (personal permissions, MCP servers)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Local bundle spike
+local/target/
+local/node_modules/
+local/.shadow-cljs/
+local/resources/public/js/compiled/
+local/resources/public/css/app.css
+
+# Conductor
+.context/
+.env*.local

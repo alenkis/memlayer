@@ -1,0 +1,11 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": "public/.*"},
+      {"pattern": "prompts/.*"},
+      {"pattern": "logback\\.xml"},
+      {"pattern": "config-local\\.edn"},
+      {"pattern": "version\\.edn"}
+    ]
+  }
+}

@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#
+# memlayer - Persistent memory system for AI agents
+#
+# Usage:
+#   memlayer          # MCP mode (default)
+#   memlayer server   # HTTP API server
+#
+# Requires: Java 22+
+
+set -euo pipefail
+
+# Resolve the directory this script lives in (handles symlinks)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+# Look for jar next to script (dist layout), then in target/ (dev layout)
+if [ -f "${SCRIPT_DIR}/memlayer.jar" ]; then
+  JAR_FILE="${SCRIPT_DIR}/memlayer.jar"
+elif [ -f "${SCRIPT_DIR}/../target/memlayer.jar" ]; then
+  JAR_FILE="${SCRIPT_DIR}/../target/memlayer.jar"
+else
+  JAR_FILE="${SCRIPT_DIR}/memlayer.jar"  # will fail with helpful message below
+fi
+
+# Allow override via JAVA_CMD or JAVA_HOME
+if [ -n "${JAVA_CMD:-}" ]; then
+  JAVA="$JAVA_CMD"
+elif [ -n "${JAVA_HOME:-}" ]; then
+  JAVA="${JAVA_HOME}/bin/java"
+else
+  JAVA="java"
+fi
+
+# Verify Java version >= 22
+JAVA_VERSION=$("$JAVA" -version 2>&1 | head -1 | sed 's/.*"\([0-9]*\).*/\1/')
+if [ "$JAVA_VERSION" -lt 22 ] 2>/dev/null; then
+  echo "Error: Java 22+ required (found Java $JAVA_VERSION)" >&2
+  echo "Set JAVA_HOME or JAVA_CMD to point to Java 22+." >&2
+  exit 1
+fi
+
+if [ ! -f "$JAR_FILE" ]; then
+  echo "Error: memlayer.jar not found at $JAR_FILE" >&2
+  echo "Build it first: make uberjar" >&2
+  exit 1
+fi
+
+# JVM flags required by Proximum
+JVM_OPTS=(
+  "--add-modules" "jdk.incubator.vector"
+  "--enable-native-access=ALL-UNNAMED"
+)
+
+# Determine main class from mode
+MODE="${1:-mcp}"
+case "$MODE" in
+  mcp)
+    MAIN_CLASS="memlayer.mcp.server"
+    JVM_OPTS+=("-Dlogback.configurationFile=logback-mcp.xml")
+    ;;
+  server)
+    MAIN_CLASS="memlayer.local"
+    ;;
+  *)
+    echo "Unknown mode: $MODE" >&2
+    echo "Usage: memlayer [mcp|server]" >&2
+    exit 1
+    ;;
+esac
+
+exec "$JAVA" "${JVM_OPTS[@]}" -cp "$JAR_FILE" "$MAIN_CLASS"

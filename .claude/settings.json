@@ -1,0 +1,19 @@
+{
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "allium@juxt-plugins": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -d .context ] && [ ! -f .context/linear-ticket ]; then echo 'BLOCKED: No Linear ticket associated with this Conductor workspace. Run /linear to set up a ticket before writing code.' && exit 2; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
