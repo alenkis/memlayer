@@ -1,0 +1,43 @@
+---
+const docsUrl = 'https://docs.memlayer.dev';
+---
+
+<section class="relative overflow-hidden pt-32 pb-20">
+  <!-- Grid background -->
+  <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.03)_1px,transparent_1px)] bg-[size:64px_64px]"></div>
+  <!-- Radial glow -->
+  <div class="absolute top-0 left-1/2 h-[600px] w-[800px] -translate-x-1/2 rounded-full bg-accent/10 blur-3xl"></div>
+
+  <div class="relative mx-auto max-w-4xl px-6 text-center">
+    <div class="mb-6 inline-block rounded-full border border-border px-4 py-1.5 text-sm text-text-muted">
+      Managed Cloud &middot; Zero Ops
+    </div>
+
+    <h1 class="mb-6 text-5xl font-bold leading-tight tracking-tight md:text-7xl">
+      Persistent Memory<br />
+      <span class="bg-gradient-to-r from-accent to-accent-bright bg-clip-text text-transparent">
+        for AI Agents
+      </span>
+    </h1>
+
+    <p class="mx-auto mb-10 max-w-2xl text-lg text-text-muted md:text-xl">
+      A persistent knowledge graph that gives your AI agents
+      long-term memory. Accessible via MCP and REST API.
+    </p>
+
+    <div class="flex flex-col items-center justify-center gap-4 sm:flex-row">
+      <a
+        href={`${docsUrl}/getting-started/installation/`}
+        class="rounded-lg bg-accent px-8 py-3 text-base font-medium text-white transition-colors hover:bg-accent-bright"
+      >
+        Get Started
+      </a>
+      <a
+        href={docsUrl}
+        class="rounded-lg border border-border px-8 py-3 text-base font-medium text-text-muted transition-colors hover:border-border-highlight hover:text-text"
+      >
+        Read the Docs
+      </a>
+    </div>
+  </div>
+</section>

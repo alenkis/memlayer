@@ -1,0 +1,52 @@
+;; Local mode configuration — self-contained single-user memlayer.
+;; No Firebase, no DynamoDB, no Stratum, auth disabled.
+;; Storage in ~/.memlayer/ (file-backed Datahike + Proximum).
+
+{:server {:port #long #or [#env MEMLAYER_PORT 8090]
+          :dashboard-port 0}
+
+ :datahike {:backend :file
+            :path #or [#env DATAHIKE_PATH "~/.memlayer/db"]}
+
+ :proximum {:dim 1536
+            :capacity #long #or [#env PROXIMUM_CAPACITY 100000]
+            :backend #keyword #or [#env PROXIMUM_BACKEND "file"]
+            :path #or [#env PROXIMUM_PATH "~/.memlayer/vectors"]}
+
+ :openai {:api-key #env OPENAI_API_KEY
+          :base-url #or [#env OPENAI_BASE_URL "https://api.openai.com/v1"]
+          :embedding-model #or [#env OPENAI_EMBEDDING_MODEL "text-embedding-3-small"]}
+
+ :groq {:api-key #env GROQ_API_KEY
+        :base-url #or [#env GROQ_BASE_URL "https://api.groq.com/openai/v1"]
+        :model #or [#env GROQ_MODEL "llama-3.3-70b-versatile"]}
+
+ :prompts {:extraction       "prompts/extraction.edn"
+           :batch-extraction "prompts/batch-extraction.edn"
+           :decision         "prompts/decision.edn"
+           :resolution       "prompts/resolution.edn"
+           :reflect          "prompts/reflect.edn"
+           :reflect-organize        "prompts/reflect-organize.edn"
+           :reflect-organize-domains "prompts/reflect-organize-domains.edn"
+           :reflect-summarize        "prompts/reflect-summarize.edn"
+           :reflect-connect          "prompts/reflect-connect.edn"
+           :reflect-curate           "prompts/reflect-curate.edn"
+           :recall                   "prompts/recall.edn"}
+
+ :auth {:e2e-mode false
+        :api-key-hash nil
+        :auth-enabled false}
+
+ :rate-limit {:enabled false
+              :max-requests 9999
+              :window-ms 60000}
+
+ :flow {:io-threads #long #or [#env FLOW_IO_THREADS 32]
+        :submit-timeout-ms #long #or [#env FLOW_SUBMIT_TIMEOUT_MS 120000]}
+
+ :tuning {:retain-context-threshold #double #or [#env RETAIN_CONTEXT_THRESHOLD 0.4]
+          :retain-context-limit #long #or [#env RETAIN_CONTEXT_LIMIT 10]
+          :recall-default-limit #long #or [#env RECALL_DEFAULT_LIMIT 10]
+          :reflect-batch-size #long #or [#env REFLECT_BATCH_SIZE 15]
+          :reflect-default-threshold #double #or [#env REFLECT_DEFAULT_THRESHOLD 0.5]
+          :memory-limit #long #or [#env MEMORY_LIMIT 1000]}}

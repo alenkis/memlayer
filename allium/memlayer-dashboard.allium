@@ -1,0 +1,235 @@
+-- allium: 3
+-- memlayer-dashboard.allium
+
+-- Scope: Dashboard UI surfaces, API key management, and usage analytics
+-- Includes: User profile, token management, API key storage, key validation, usage dashboard
+-- Depends on: memlayer-auth.allium, memlayer-core.allium (analytics events)
+
+use "./memlayer-auth.allium" as auth
+use "./memlayer-core.allium" as core
+
+-- =============================================================================
+-- Entities
+-- =============================================================================
+
+-- User's provider API keys (Groq for LLM, OpenAI for embeddings).
+-- Encrypted at rest with AES-256-GCM. In dev mode (no encryption key),
+-- stored as plaintext.
+entity UserSettings {
+    user_id: String                     -- Firebase UID (primary key)
+    groq_key_encrypted: String?         -- AES-256-GCM encrypted blob
+    openai_key_encrypted: String?       -- AES-256-GCM encrypted blob
+    default_api_token: String?          -- plaintext of most recently created token
+    updated_at: Timestamp
+
+    -- Derived
+    has_groq_key: groq_key_encrypted != null
+    has_openai_key: openai_key_encrypted != null
+}
+
+-- =============================================================================
+-- Actors
+-- =============================================================================
+
+-- Dashboard users authenticate via Firebase JWT (not API tokens).
+-- The dashboard auth middleware validates the JWT per-handler.
+actor DashboardUser {
+    identified_by: auth/FirebaseUser.uid
+}
+
+-- =============================================================================
+-- Surfaces
+-- =============================================================================
+
+-- GET /account/me
+-- First access idempotently creates the user's per-tenant database.
+surface UserProfile {
+    facing user: DashboardUser
+
+    exposes:
+        user.uid
+        user.email
+        user.name
+}
+
+-- GET/POST/DELETE /account/tokens
+-- Token plaintext is returned exactly once at creation. Listing never
+-- exposes the hash or plaintext -- only prefix, name, and timestamps.
+surface TokenManagement {
+    facing user: DashboardUser
+
+    context tokens: auth/Token where owner = user.uid
+
+    exposes:
+        for token in tokens:
+            token.name
+            token.prefix
+            token.created_at
+            token.revoked_at
+
+    provides:
+        auth/CreateToken(user.uid, name)
+            -- Returns plaintext exactly once; stored as default_api_token
+        auth/RevokeToken(token.id, user.uid)
+            when token in tokens and token.is_active
+}
+
+-- GET /account/active-token
+-- Returns the plaintext of the most recently created token.
+-- May refer to a revoked token; the consumer must handle this.
+surface ActiveToken {
+    facing user: DashboardUser
+
+    context settings: UserSettings where user_id = user.uid
+
+    exposes:
+        settings.default_api_token
+}
+
+-- GET/POST/DELETE /account/settings, POST /account/settings/keys/validate
+-- Key values are never exposed; only has_key booleans.
+surface ApiKeySettings {
+    facing user: DashboardUser
+
+    context settings: UserSettings where user_id = user.uid
+
+    exposes:
+        user.email
+        user.name
+        settings.has_groq_key
+        settings.has_openai_key
+
+    provides:
+        SaveApiKeys(user.uid, groq_key, openai_key)
+        DeleteApiKeys(user.uid)
+        ValidateApiKeys(groq_key, openai_key)
+}
+
+-- GET/POST/PUT/DELETE /account/namespaces
+-- Namespace CRUD for the authenticated user's tenant.
+surface NamespaceManagement {
+    facing user: DashboardUser
+
+    context namespaces: core/Namespace
+
+    exposes:
+        for ns in namespaces:
+            ns.id
+            ns.name
+            ns.created_at
+
+    provides:
+        core/CreateNamespace(name)
+        core/RenameNamespace(ns.id, new_name)
+            when ns in namespaces
+        core/DeleteNamespace(ns.id)
+            when ns in namespaces
+}
+
+-- =============================================================================
+-- API Key Management Rules
+-- =============================================================================
+
+-- Save uses merge semantics: only provided keys are overwritten.
+-- Omitted keys in the request preserve the existing value.
+rule SaveApiKeys {
+    when: SaveApiKeys(user_id, groq_key, openai_key)
+
+    let existing = UserSettings where user_id = user_id
+    let merged_groq = groq_key ?? existing.groq_key_decrypted
+    let merged_openai = openai_key ?? existing.openai_key_decrypted
+
+    ensures: existing.groq_key_encrypted = encrypt(merged_groq)
+    ensures: existing.openai_key_encrypted = encrypt(merged_openai)
+    ensures: existing.updated_at = now
+    -- In-process secret cache is evicted so next read sees new values
+}
+
+rule DeleteApiKeys {
+    when: DeleteApiKeys(user_id)
+
+    let settings = UserSettings where user_id = user_id
+
+    ensures: settings.groq_key_encrypted = null
+    ensures: settings.openai_key_encrypted = null
+    ensures: settings.updated_at = now
+    -- In-process secret cache is evicted
+}
+
+-- Validate keys by making a live test call to each provider.
+-- Each key is tested independently; one failing does not block the other.
+rule ValidateApiKeys {
+    when: ValidateApiKeys(groq_key, openai_key)
+
+    ensures: ValidationResult(
+        groq_valid: if groq_key != null: test_groq_call(groq_key),
+        openai_valid: if openai_key != null: test_openai_call(openai_key)
+    )
+}
+
+deferred encrypt               -- AES-256-GCM; no-op in dev mode (stores plaintext)
+                               -- Accepted risk for now: early-stage users manage their
+                               -- own tokens directly on OpenAI/Anthropic. Encryption adds
+                               -- operational complexity (key management, rotation) that
+                               -- isn't justified until we have significant user volume.
+                               -- Revisit when we move past early adopters.
+deferred test_groq_call        -- Live Groq API chat completion to verify key
+deferred test_openai_call      -- Live OpenAI embedding generation to verify key
+
+-- =============================================================================
+-- Usage Dashboard
+-- =============================================================================
+
+-- GET /api/v1/account/usage?range=7d|30d|90d
+-- Aggregates LLM token usage from analytics events for the authenticated user.
+-- Only llm.call.completed events contribute to usage totals.
+
+value UsageByProvider {
+    provider: String                    -- e.g., "openai", "groq"
+    total_tokens: Integer
+}
+
+value UsageByOperation {
+    operation: String                   -- e.g., "retain", "recall"
+    provider: String
+    step: String                        -- e.g., "extraction", "embedding"
+    total_tokens: Integer
+    call_count: Integer
+}
+
+value UsageTimeseriesPoint {
+    date: String                        -- YYYY-MM-DD (DATE_TRUNC DAY)
+    provider: String
+    total_tokens: Integer
+}
+
+surface UsageDashboard {
+    facing user: DashboardUser
+
+    -- LLM token usage (deferred until analytics event pipeline is implemented):
+    --   total_tokens, by_provider, by_operation, timeseries
+    -- Currently returns zeroed stubs for these fields.
+
+    -- Memory stats (live from stratum):
+    --   by_layer, by_namespace, by_source — materialized from datahike memories.
+
+    exposes:
+        deferred total_tokens           -- SUM of all token_count in range
+        deferred by_provider: List<UsageByProvider>
+        deferred by_operation: List<UsageByOperation>
+        deferred timeseries: List<UsageTimeseriesPoint>
+        memory_stats.by_layer           -- count of memories grouped by semantic layer
+        memory_stats.by_namespace       -- count of memories grouped by namespace
+        memory_stats.by_source          -- count of memories grouped by source
+}
+
+-- =============================================================================
+-- Secret Cache
+-- =============================================================================
+
+-- Decrypted API keys are cached in-process (STM TVar) with a TTL.
+-- This avoids DB reads and AES decryption on every LLM operation.
+-- The cache is evicted eagerly on every write to UserSettings.
+--
+-- This is infrastructure, not domain logic -- included here for
+-- completeness as it affects the observable latency of key operations.

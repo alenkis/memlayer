@@ -1,0 +1,133 @@
+---
+title: "Tools Reference"
+description: "MCP tool definitions and parameters"
+---
+
+MemLayer exposes five MCP tools. Claude calls these automatically based on conversation context.
+
+---
+
+## memlayer_retain
+
+Store information the user wants remembered. Use when the user says "remember", shares preferences, or provides facts about themselves.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `content` | string | Yes | The fact to remember. Write in third person: "User prefers X" not "I prefer X" |
+| `source` | string | No | Origin identifier: `conversation`, `user_stated`, or `inferred` |
+
+**Example call:**
+
+```json
+{
+  "content": "User's favorite programming language is Python",
+  "source": "user_stated"
+}
+```
+
+**When Claude uses it:** User says "Remember that my favorite language is Python." Claude extracts the fact, rephrases it in third person, and calls retain.
+
+**Maps to:** `POST /api/v1/retain`
+
+---
+
+## memlayer_recall
+
+Search stored memories. Claude calls this before answering questions about user preferences, history, or previously shared information.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | Yes | Natural language search. Be specific: "programming language preference" not just "language" |
+| `limit` | integer | No | Max results (default: 5). Use 10+ for broad searches |
+
+**Example call:**
+
+```json
+{
+  "query": "favorite programming language",
+  "limit": 5
+}
+```
+
+**When Claude uses it:** User asks "What's my favorite language?" Claude searches for semantically similar memories and uses the results to answer.
+
+**Maps to:** `POST /api/v1/recall`
+
+---
+
+## memlayer_reflect
+
+Consolidate related memories into higher-level summaries. Use sparingly -- only when the user asks to organize memories or after many retain calls.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | No | Only consolidate memories about this topic |
+
+**Example call:**
+
+```json
+{
+  "query": "programming"
+}
+```
+
+**When Claude uses it:** User says "Organize my memories about programming." Claude scopes the reflection to programming-related facts.
+
+**Maps to:** `POST /api/v1/reflect`
+
+---
+
+## memlayer_forget
+
+Remove a memory from active queries. Use when explicitly asked to forget something.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `memory-id` | string | Yes | The memory UUID to forget (get this from recall results) |
+
+**Example call:**
+
+```json
+{
+  "memory-id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**When Claude uses it:** User says "Forget my programming preferences." Claude first calls recall to find matching memories, reads the `memory-id` from the results, then calls forget with that ID.
+
+**Maps to:** `POST /api/v1/forget`
+
+---
+
+## memlayer_batch_retain
+
+Store multiple memories in a single call. Use when the user shares several facts at once or when importing bulk information.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `namespace` | string | Yes | Namespace to store memories in |
+| `items` | array | Yes | Array of `{content, source}` objects |
+
+**Example call:**
+
+```json
+{
+  "namespace": "default",
+  "items": [
+    {"content": "User works at Acme Corp", "source": "user_stated"},
+    {"content": "User's role is senior engineer", "source": "user_stated"}
+  ]
+}
+```
+
+**When Claude uses it:** User shares multiple facts in a single message. Claude batches them into one call for efficiency.
+
+**Maps to:** `POST /api/v1/retain/batch`
+
+---
+
+## Tool discovery
+
+When Claude connects to MemLayer via MCP, it receives the tool definitions automatically through the `tools/list` JSON-RPC method. The descriptions guide Claude on when and how to use each tool.
+
+You can inspect the raw tool definitions in the source at `src/clj/memlayer/mcp/tools.clj`.

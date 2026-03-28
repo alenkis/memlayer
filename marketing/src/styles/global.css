@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0a0a;
+  --color-bg-card: #141414;
+  --color-bg-card-hover: #1a1a1a;
+  --color-border: #262626;
+  --color-border-highlight: #404040;
+  --color-text: #fafafa;
+  --color-text-muted: #a3a3a3;
+  --color-accent: #818cf8;
+  --color-accent-bright: #a78bfa;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}

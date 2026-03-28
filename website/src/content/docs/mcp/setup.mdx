@@ -1,0 +1,101 @@
+---
+title: "MCP Setup"
+description: "Configure MemLayer as an MCP server"
+---
+
+MCP (Model Context Protocol) lets Claude use MemLayer as a tool. MemLayer uses the [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) (MCP spec 2025-03-26).
+
+## Prerequisites
+
+- [Installation](/getting-started/installation/) completed
+- API token ready (`mlk_...`)
+
+## Claude Desktop
+
+Add MemLayer to your Claude Desktop configuration file:
+
+```json
+{
+  "mcpServers": {
+    "memlayer": {
+      "url": "https://api.memlayer.dev/mcp",
+      "headers": {
+        "X-API-Key": "mlk_your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+Config file location:
+
+| OS | Path |
+|----|------|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+After saving, restart Claude Desktop.
+
+## Claude Code
+
+Create a `.mcp.json` file in your project root:
+
+```json
+{
+  "mcpServers": {
+    "memlayer": {
+      "url": "https://api.memlayer.dev/mcp",
+      "headers": {
+        "X-API-Key": "mlk_your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+Reload your Claude Code session to pick up the new configuration.
+
+## Authentication
+
+The MCP server authenticates requests using the `X-API-Key` header. Create an API token via the [dashboard](/dashboard/) and include it in your client configuration.
+
+## How it works
+
+The MCP server exposes the following endpoints:
+
+| Method | Purpose |
+|--------|---------|
+| `POST /mcp` | Send JSON-RPC requests and notifications |
+| `GET /mcp` | Open SSE stream for server-initiated messages |
+| `DELETE /mcp` | Terminate session |
+
+**Session flow:**
+
+1. Client POSTs `initialize` request
+2. Server responds with JSON-RPC result and a `Mcp-Session-Id` header
+3. Client includes `Mcp-Session-Id` on all subsequent requests
+4. Client DELETEs the session when done
+
+The server supports both `application/json` and `text/event-stream` (SSE) response formats based on the client's `Accept` header.
+
+## Verifying the connection
+
+After configuring Claude, ask:
+
+> "Remember that my favorite color is blue"
+
+If MemLayer is connected, Claude will call the `memlayer_retain` tool and confirm the memory was stored.
+
+**Troubleshooting:**
+```bash
+curl -s -X POST https://api.memlayer.dev/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'X-API-Key: mlk_your_api_key_here' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
+```
+
+## Next steps
+
+- [MCP Tools Reference](/mcp/tools/) -- all available tools and their parameters
+- [Quickstart: MCP](/getting-started/quickstart-mcp/) -- guided walkthrough of all four operations

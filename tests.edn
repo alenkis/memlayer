@@ -1,0 +1,10 @@
+#kaocha/v1
+{:tests [{:id          :unit
+          :test-paths  ["test"]
+          :ns-patterns ["^memlayer\\.(?!integration\\.).*"]
+          :source-paths ["src/clj"]}
+         {:id          :integration
+          :test-paths  ["test"]
+          :ns-patterns ["^memlayer\\.integration\\..*"]
+          :source-paths ["src/clj"]
+          :kaocha.plugin.capture-output/capture? false}]}

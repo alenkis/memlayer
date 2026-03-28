@@ -1,0 +1,139 @@
+---
+title: "Reflect"
+description: "Consolidate and organize memories"
+---
+
+Reflect is the "thinking" operation. It builds additive structure on top of the knowledge graph — organizing facts into concepts and domains, generating summaries, discovering relationships, and flagging contradictions.
+
+**Principle:** Facts are sacred. Reflect only creates new nodes (concepts, domains, summaries) and edges (relationships) on top. Nothing is modified or deleted.
+
+## Phases
+
+Reflect runs 4 composed phases in sequence. You can run a subset via the `phases` parameter.
+
+```
+[1. Organize]    → orphan facts → concepts, orphan concepts → domains
+    │
+    ▼
+[2. Summarize]   → create summary nodes for concepts/domains
+    │
+    ▼
+[3. Connect]     → discover cross-concept relationships
+    │
+    ▼
+[4. Curate]      → identify contradictions between facts
+```
+
+### 1. Organize
+
+Groups orphan facts (facts without a parent) into concepts. Context-aware: the LLM sees existing concepts and decides whether to assign each fact to an existing concept or create a new one.
+
+After facts are organized, orphan concepts (concepts without a parent domain) are grouped into domains using the same pattern.
+
+### 2. Summarize
+
+Creates summary nodes for concepts and domains that don't have one yet. Each summary is a child memory with `layer: "summary"` that captures the essence of its parent's children.
+
+### 3. Connect
+
+Discovers relationships between concepts using vector similarity to find candidate pairs, then asks the LLM to evaluate and describe each relationship. Only creates relationships between concepts that aren't already connected.
+
+### 4. Curate
+
+Within each concept, finds fact pairs that are close by embedding similarity and asks the LLM to identify genuine contradictions. Contradictions are flagged bidirectionally — both facts reference each other.
+
+A contradiction means the facts cannot both be true simultaneously. Facts that are merely different or complementary are not flagged.
+
+## Semantic Hierarchy
+
+Reflect builds and maintains a 4-level hierarchy with an orthogonal summary layer:
+
+```
+"Programming" (Domain)
+  ├── [Summary: "Covers type systems and memory management approaches..."]
+  └── "Type Systems" (Concept)
+        ├── [Summary: "Static typing approaches in modern languages..."]
+        ├── "Clojure has persistent data structures" (Fact)
+        ├── "Rust has ownership and borrowing" (Fact)
+        └── "Python uses dynamic typing" (Fact)
+```
+
+Relationships connect concepts across the hierarchy:
+
+```
+"Type Systems" ←──related-to──→ "Memory Management"
+                  (description: "Both deal with compile-time safety guarantees")
+```
+
+## When to Use
+
+- After bulk ingestion of many facts
+- Periodic maintenance to organize accumulated knowledge
+- When recall quality degrades due to unorganized memories
+- Run specific phases: `["summarize"]` to refresh summaries after new facts are organized
+
+## API
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/reflect \
+  -H "Content-Type: application/json" \
+  -d '{"namespace": "default"}'
+```
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `namespace` | string | No | Namespace to scope reflect to |
+| `dry_run` | bool | No | Preview what would happen without applying (default: false) |
+| `query` | string | No | Only consolidate memories matching this topic |
+| `threshold` | float | No | Minimum similarity for linking facts |
+| `phases` | string[] | No | Which phases to run: `"organize"`, `"summarize"`, `"connect"`, `"curate"` (default: all four) |
+
+### Response
+
+```json
+{
+  "facts-processed": 12,
+  "concepts-created": 3,
+  "domains-created": 1,
+  "organize": {
+    "facts-processed": 12,
+    "concepts-created": 3,
+    "concepts-reused": 1,
+    "domains-created": 1
+  },
+  "summarize": {
+    "summaries-created": 4
+  },
+  "connect": {
+    "relationships-created": 2
+  },
+  "curate": {
+    "contradictions-found": 1
+  }
+}
+```
+
+Top-level `facts-processed`, `concepts-created`, and `domains-created` are backward-compatible summary fields. The per-phase sub-objects contain detailed results.
+
+### Running Specific Phases
+
+```bash
+# Only run summarize and curate
+curl -X POST https://api.memlayer.dev/api/v1/reflect \
+  -H "Content-Type: application/json" \
+  -d '{"phases": ["summarize", "curate"]}'
+```
+
+## Recall Integration
+
+After reflect builds the graph, recall can traverse it with `expand-graph: true`:
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/recall \
+  -H "Content-Type: application/json" \
+  -d '{"query": "type systems", "expand-graph": true}'
+```
+
+This returns each memory with its ancestor chain, summaries, siblings, and relationships, plus an aggregate `graph` context with deduplicated concepts, summaries, and relationships.

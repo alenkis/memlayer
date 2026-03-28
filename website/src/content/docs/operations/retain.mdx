@@ -1,0 +1,103 @@
+---
+title: "Retain"
+description: "Ingest content into the knowledge graph"
+---
+
+Retain takes raw content, breaks it into atomic facts, and integrates each fact into the knowledge graph.
+
+## Pipeline
+
+```
+Raw Content
+    │
+    ▼
+[1. Find Relevant Memories]
+    │
+    ▼
+[2. Extract Atomic Memories]
+    │
+    ▼
+[3. Match Against Existing]  ← per candidate
+    │
+    ▼
+[4. Decide Operation]
+    │
+    ▼
+[5. Execute]
+```
+
+### Phase 1: Find Relevant Memories
+
+Gather context from the existing knowledge graph before processing new content.
+
+1. Generate embedding of the incoming content
+2. Semantic search for top-k similar memories
+3. Graph traversal from anchor points: parents, siblings, children, relationship edges
+
+### Phase 2: Extract Atomic Memories
+
+The LLM breaks raw content into individual facts.
+
+1. LLM receives raw content + relevant memories from Phase 1
+2. Extracts **atomic statements** -- one fact per memory
+3. Classifies each statement's **layer** and **importance**
+
+### Phase 3: Match Against Existing
+
+For each candidate, check if this fact already exists in the graph.
+
+1. Generate embedding for the candidate
+2. Scoped similarity search within the relevant neighborhood
+3. Fetch full memory + history for high-similarity matches
+4. Rank by similarity
+
+### Phase 4: Decide Operation
+
+An LLM decides how to integrate each fact:
+
+| Operation | Description |
+|-----------|-------------|
+| **CREATE** | New fact, no existing equivalent |
+| **UPDATE** | Same entity, newer info supersedes |
+| **NOOP** | Duplicate or irrelevant, skip |
+
+### Phase 5: Execute
+
+Atomically update the memory store and vector store:
+
+1. Execute the decided operation
+2. Link to parent concept (create if needed)
+3. Create relationship edges to related memories
+
+## Decision Model
+
+The decision in Phase 4 is **non-deterministic**. The same input can reasonably produce different outcomes:
+
+- "Alice works at Beta" vs. existing "Alice works at Acme"
+  - Same Alice, job changed → UPDATE
+  - Different Alice → CREATE
+  - User correcting themselves → UPDATE
+
+MemLayer guarantees **invariants** regardless of path:
+
+| Operation | Invariants |
+|-----------|------------|
+| CREATE | New memory ID, both old and new exist |
+| UPDATE | Same entity, history preserved, old accessible via temporal query |
+| NOOP | No changes |
+
+## API
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/retain \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Alice started working at Beta Corp in January 2025.",
+    "source": "conversation"
+  }'
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `content` | string | Yes | Raw content to ingest |
+| `source` | string | No | Origin identifier |

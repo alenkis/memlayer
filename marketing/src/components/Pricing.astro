@@ -1,0 +1,74 @@
+---
+const docsUrl = 'https://docs.memlayer.dev';
+
+const tiers = [
+  {
+    name: 'Starter',
+    price: 'Free',
+    description: 'Get started with agent memory',
+    features: [
+      'MCP + REST API',
+      'Up to 1,000 memories',
+      'Semantic search',
+      'Community support',
+    ],
+    cta: { label: 'Get Started', href: `${docsUrl}/getting-started/installation/` },
+    highlighted: false,
+  },
+  {
+    name: 'Pro',
+    price: 'Coming Soon',
+    description: 'For teams building production AI products',
+    features: [
+      'Unlimited memories',
+      'Time-travel queries',
+      'Knowledge graph',
+      'Priority support',
+    ],
+    cta: { label: 'Join Waitlist', href: '#' },
+    highlighted: true,
+  },
+];
+---
+
+<section id="pricing" class="border-t border-border py-24">
+  <div class="mx-auto max-w-4xl px-6">
+    <h2 class="mb-4 text-center text-3xl font-bold md:text-4xl">
+      Pricing
+    </h2>
+    <p class="mx-auto mb-16 max-w-2xl text-center text-text-muted">
+      Start free. Scale when you're ready.
+    </p>
+
+    <div class="grid gap-6 md:grid-cols-2">
+      {tiers.map(tier => (
+        <div class:list={[
+          'rounded-xl border p-8',
+          tier.highlighted ? 'border-accent bg-accent/5' : 'border-border bg-bg-card',
+        ]}>
+          <h3 class="mb-2 text-xl font-semibold">{tier.name}</h3>
+          <div class="mb-2 text-3xl font-bold">{tier.price}</div>
+          <p class="mb-6 text-text-muted">{tier.description}</p>
+          <ul class="mb-8 space-y-3">
+            {tier.features.map(feature => (
+              <li class="flex items-center gap-2 text-sm text-text-muted">
+                <span class="text-accent">✓</span> {feature}
+              </li>
+            ))}
+          </ul>
+          <a
+            href={tier.cta.href}
+            class:list={[
+              'block rounded-lg px-6 py-3 text-center text-sm font-medium transition-colors',
+              tier.highlighted
+                ? 'bg-accent text-white hover:bg-accent-bright'
+                : 'border border-border text-text-muted hover:border-border-highlight hover:text-text',
+            ]}
+          >
+            {tier.cta.label}
+          </a>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

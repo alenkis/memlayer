@@ -1,0 +1,25 @@
+---
+title: MemLayer Documentation
+description: Persistent memory for AI agents
+template: splash
+hero:
+  title: MemLayer
+  tagline: Persistent memory for AI agents. A knowledge graph accessible via MCP and REST API.
+  actions:
+    - text: Connect Your Agent
+      link: /getting-started/setup/
+      icon: right-arrow
+      variant: primary
+    - text: API Reference
+      link: /api-reference/overview/
+      variant: minimal
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+	<LinkCard title="✏️ Retain" href="/operations/retain/" description="Store memories with automatic entity extraction, deduplication, and knowledge graph integration." />
+	<LinkCard title="🔍 Recall" href="/operations/recall/" description="Semantic search with layer filtering, graph traversal, and time-travel queries." />
+	<LinkCard title="🧩 Reflect" href="/operations/reflect/" description="Consolidate scattered facts into concepts and domains. Let the system organize your knowledge." />
+	<LinkCard title="🗑️ Forget" href="/operations/forget/" description="Remove memories from active queries while preserving audit history." />
+</CardGrid>

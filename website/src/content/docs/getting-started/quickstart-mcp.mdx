@@ -1,0 +1,97 @@
+---
+title: "Quickstart: MCP"
+description: "Get started with MemLayer via Claude"
+---
+
+MCP (Model Context Protocol) lets Claude Desktop and Claude Code use MemLayer as a tool. Claude can store, search, organize, and forget memories on your behalf -- no API calls required.
+
+## Prerequisites
+
+- [Installation](/getting-started/installation/) completed
+- API token ready (`mlk_...`)
+
+## Claude Desktop setup
+
+Add MemLayer to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "memlayer": {
+      "url": "https://api.memlayer.dev/mcp",
+      "headers": {
+        "X-API-Key": "mlk_your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+The config file location depends on your OS:
+
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+## Claude Code setup
+
+Create a `.mcp.json` file in your project root:
+
+```json
+{
+  "mcpServers": {
+    "memlayer": {
+      "url": "https://api.memlayer.dev/mcp",
+      "headers": {
+        "X-API-Key": "mlk_your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+## Restart Claude
+
+After adding the configuration, restart Claude Desktop or reload your Claude Code session.
+
+## Try it
+
+Open a conversation with Claude and try these prompts in order:
+
+**Store a memory (retain):**
+
+> "Remember that my favorite programming language is Python"
+
+Claude calls the retain tool, which extracts the fact and stores it with a vector embedding.
+
+**Search memories (recall):**
+
+> "What's my favorite programming language?"
+
+Claude calls the recall tool, which performs a semantic search and returns the matching memory.
+
+**Consolidate memories (reflect):**
+
+> "Organize my memories"
+
+Claude calls the reflect tool, which groups related facts into higher-level concepts and domains.
+
+**Forget a memory:**
+
+> "Forget everything about my programming preferences"
+
+Claude calls recall to find matching memories, then calls forget with the relevant memory IDs to remove them.
+
+## What happened
+
+Behind the scenes, each prompt triggered a different MemLayer operation:
+
+1. **Retain** extracted "favorite programming language is Python" as a structured fact, generated a vector embedding, and stored it in Datahike and the Proximum vector index.
+2. **Recall** converted your question into an embedding, searched for semantically similar memories, and returned the best match.
+3. **Reflect** scanned stored memories for patterns and grouped related facts into concepts.
+4. **Forget** retracted the specified memories from Datahike and removed their vectors from the index. The data remains in Datahike history for audit purposes but no longer appears in queries.
+
+## Next steps
+
+- [Quickstart: API](/getting-started/quickstart-api/) -- call the REST API directly
+- [Concepts](/concepts/overview/) -- understand semantic layers, temporal queries, and the knowledge graph
+- [MCP Tools Reference](/mcp/tools/) -- full list of available MCP tools and their parameters

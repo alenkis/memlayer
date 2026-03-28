@@ -1,0 +1,70 @@
+---
+title: "Dashboard"
+description: "Monitor your MemLayer instance with the web dashboard"
+---
+
+MemLayer includes a web-based dashboard for monitoring the state of your memory system. It is the landing page of the frontend application, accessible at the root URL (`/`).
+
+## Features
+
+The dashboard is organized into four sections:
+
+### Health Status
+
+A real-time indicator in the top-right corner shows whether the MemLayer API is reachable. It refreshes every 30 seconds and displays either **Healthy** (green) or **Unhealthy** (red).
+
+### Quick Stats
+
+Four cards at the top provide a snapshot of your instance:
+
+| Card | Description |
+|------|-------------|
+| **Total Memories** | Count of all stored memories across every layer |
+| **Vector Count** | Number of embeddings in the Proximum vector database |
+| **Facts** | Count of memories classified in the Fact layer |
+| **Episodes** | Count of memories classified in the Episode layer |
+
+### Memory Distribution
+
+A breakdown of memories by [semantic layer](/concepts/semantic-layers/), showing the count and percentage for each:
+
+- **Domain** -- broad topic areas
+- **Concept** -- abstract ideas within a domain
+- **Fact** -- specific, atomic pieces of knowledge
+- **Episode** -- time-bound events or interactions
+
+Each layer is displayed as a color-coded progress bar so you can see at a glance how your knowledge graph is balanced.
+
+### Consistency Check
+
+Monitors data integrity between the memory store (Datahike) and the vector store (Proximum). It reports two metrics:
+
+- **Missing Vectors** -- memories that do not have a corresponding embedding in Proximum.
+- **Orphan Vectors** -- embeddings in Proximum that no longer correspond to a memory.
+
+When inconsistencies are detected, the panel highlights with a yellow border and suggests running a cleanup.
+
+## Other Pages
+
+The dashboard sidebar provides navigation to the rest of the frontend:
+
+| Page | Path | Purpose |
+|------|------|---------|
+| **Dashboard** | `/` | System overview (this page) |
+| **Browser** | `/browser` | Search and browse stored memories |
+| **Playground** | `/playground` | Test retain and recall operations interactively |
+| **Graph** | `/graph` | Visualize memory relationships as an interactive graph |
+
+## API Endpoints
+
+The dashboard consumes these backend endpoints:
+
+**`GET /health`** -- Returns health status when the API and its database connections are operational. Polled every 30 seconds.
+
+**`GET /api/v1/stats/memories`** -- Returns memory counts and layer distribution. Polled every 10 seconds.
+
+**`GET /api/v1/stats/consistency`** -- Returns consistency check results between Datahike and Proximum (missing vectors, orphan vectors).
+
+## Accessing the Dashboard
+
+The dashboard is available at [app.memlayer.dev](https://app.memlayer.dev) after signing in.

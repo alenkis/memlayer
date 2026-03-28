@@ -1,0 +1,191 @@
+---
+title: "Connect Your Agent"
+description: "Set up memlayer with Claude Code, Cursor, Windsurf, and other AI coding agents"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Add persistent memory to your AI agent in under 2 minutes. MemLayer works with any MCP-compatible client.
+
+## 1. Get your API key
+
+1. Sign up at [memlayer.dev](https://memlayer.dev)
+2. Open the [dashboard](https://app.memlayer.dev) and go to **API Tokens** then **Create token**
+3. Copy your token (`mlk_...`) — it's shown only once
+
+## 2. Configure your agent
+
+Every agent below connects to the same MCP endpoint. Pick your client:
+
+<Tabs>
+  <TabItem label="Claude Code">
+
+**One command** (recommended):
+
+```bash
+claude mcp add memlayer \
+  https://api.memlayer.dev/mcp \
+  --transport http \
+  --header "X-API-Key: mlk_YOUR_KEY"
+```
+
+Or create `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "memlayer": {
+      "url": "https://api.memlayer.dev/mcp",
+      "headers": {
+        "X-API-Key": "mlk_YOUR_KEY"
+      }
+    }
+  }
+}
+```
+
+Reload your Claude Code session to pick up the config.
+
+  </TabItem>
+
+  <TabItem label="Claude Desktop">
+
+Edit your config file:
+
+| OS | Path |
+|----|------|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+```json
+{
+  "mcpServers": {
+    "memlayer": {
+      "url": "https://api.memlayer.dev/mcp",
+      "headers": {
+        "X-API-Key": "mlk_YOUR_KEY"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving.
+
+  </TabItem>
+
+  <TabItem label="Cursor">
+
+Create `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "memlayer": {
+      "url": "https://api.memlayer.dev/mcp",
+      "headers": {
+        "X-API-Key": "mlk_YOUR_KEY"
+      }
+    }
+  }
+}
+```
+
+Or go to **Cursor Settings > MCP > Add new MCP server** and enter the URL and header.
+
+  </TabItem>
+
+  <TabItem label="Windsurf">
+
+Create `.windsurf/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "memlayer": {
+      "serverUrl": "https://api.memlayer.dev/mcp",
+      "headers": {
+        "X-API-Key": "mlk_YOUR_KEY"
+      }
+    }
+  }
+}
+```
+
+Or configure via **Windsurf Settings > MCP**.
+
+  </TabItem>
+
+  <TabItem label="VS Code Copilot">
+
+Create `.vscode/mcp.json` in your project root:
+
+```json
+{
+  "servers": {
+    "memlayer": {
+      "type": "http",
+      "url": "https://api.memlayer.dev/mcp",
+      "headers": {
+        "X-API-Key": "mlk_YOUR_KEY"
+      }
+    }
+  }
+}
+```
+
+Or go to **Settings > GitHub Copilot > MCP** and add the server.
+
+  </TabItem>
+
+  <TabItem label="Cline">
+
+Open Cline's MCP settings panel in VS Code and add a new server with name `memlayer`, transport **Streamable HTTP**, URL `https://api.memlayer.dev/mcp`, and header `X-API-Key: mlk_YOUR_KEY`.
+
+  </TabItem>
+</Tabs>
+
+## 3. Verify
+
+Ask your agent:
+
+> "Remember that my favorite programming language is Python"
+
+If memlayer is connected, the agent will call the `memlayer_retain` tool and confirm the memory was stored.
+
+Then test recall:
+
+> "What's my favorite programming language?"
+
+The agent calls `memlayer_recall` and returns your stored memory.
+
+## Other MCP clients
+
+Any client that supports [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) can connect to memlayer:
+
+| Setting | Value |
+|---------|-------|
+| **URL** | `https://api.memlayer.dev/mcp` |
+| **Auth header** | `X-API-Key: mlk_YOUR_KEY` |
+| **Transport** | Streamable HTTP |
+| **Protocol** | MCP 2025-03-26 |
+
+## What tools does my agent get?
+
+Once connected, your agent has access to five tools:
+
+| Tool | What it does |
+|------|-------------|
+| `memlayer_retain` | Store memories from conversation content |
+| `memlayer_recall` | Semantic search across stored memories |
+| `memlayer_reflect` | Consolidate scattered memories into concepts |
+| `memlayer_forget` | Remove a memory from active queries |
+| `memlayer_batch_retain` | Store multiple memories in a single call |
+
+See [MCP Tools Reference](/mcp/tools/) for full parameter details.
+
+## Next steps
+
+- [Quickstart: MCP](/getting-started/quickstart-mcp/) — guided walkthrough of all four operations
+- [Quickstart: API](/getting-started/quickstart-api/) — use the REST API directly with curl
+- [Concepts](/concepts/overview/) — understand how memlayer organizes knowledge

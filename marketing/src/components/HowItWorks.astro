@@ -1,0 +1,40 @@
+---
+const steps = [
+  {
+    number: '01',
+    title: 'Retain',
+    description: 'Store memories with automatic entity extraction, deduplication, and knowledge graph integration. MemLayer decides whether to create, update, or skip.',
+  },
+  {
+    number: '02',
+    title: 'Recall',
+    description: 'Semantic search with temporal re-ranking and graph traversal. Your agents retrieve exactly the context they need, when they need it.',
+  },
+  {
+    number: '03',
+    title: 'Reflect',
+    description: 'Consolidate scattered facts into higher-level concepts and domains. Let the system organize knowledge so your agents can reason at scale.',
+  },
+];
+---
+
+<section id="how-it-works" class="border-t border-border py-24">
+  <div class="mx-auto max-w-6xl px-6">
+    <h2 class="mb-4 text-center text-3xl font-bold md:text-4xl">
+      How It Works
+    </h2>
+    <p class="mx-auto mb-16 max-w-2xl text-center text-text-muted">
+      Three operations that give your agents structured, persistent memory.
+    </p>
+
+    <div class="grid gap-8 md:grid-cols-3">
+      {steps.map(step => (
+        <div class="relative rounded-xl border border-border bg-bg-card p-8">
+          <div class="mb-4 text-sm font-mono text-accent">{step.number}</div>
+          <h3 class="mb-3 text-xl font-semibold">{step.title}</h3>
+          <p class="text-text-muted leading-relaxed">{step.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

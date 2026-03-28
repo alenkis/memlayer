@@ -1,0 +1,65 @@
+---
+title: "API Overview"
+description: "MemLayer REST API reference"
+---
+
+Base URL: `https://api.memlayer.dev`
+
+All responses are JSON. All request bodies use `Content-Type: application/json`.
+
+## Authentication
+
+All memory operation endpoints require an `X-API-Key` header with your API token (`mlk_...`).
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| POST | `/api/v1/retain` | Ingest content, extract memories |
+| POST | `/api/v1/retain/batch` | Batch retain multiple items |
+| POST | `/api/v1/recall` | Semantic search |
+| POST | `/api/v1/reflect` | Consolidate memories |
+| POST | `/api/v1/forget` | Remove a memory from active queries |
+| POST | `/api/v1/evict` | Permanently delete a memory (GDPR) |
+| POST | `/api/v1/ingest` | Bulk memory ingestion |
+| GET | `/api/v1/memories` | List memories |
+| GET | `/api/v1/memories/:id` | Get single memory |
+| DELETE | `/api/v1/memories/:id` | Delete memory |
+| GET | `/api/v1/memories/:id/children` | Get child memories |
+| GET | `/api/v1/memories/:id/history` | Memory change history |
+| POST | `/api/v1/relationships` | Fetch relationships for memory IDs |
+| GET | `/api/v1/namespaces` | List namespaces |
+| GET | `/api/v1/stats/memories` | Memory statistics |
+| GET | `/api/v1/stats/consistency` | Data consistency check |
+| POST | `/api/v1/admin/reset` | Reset database (dev/test only) |
+
+## Memory Object
+
+All endpoints that return memories use this shape:
+
+```json
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "content": "User prefers Python for data analysis",
+  "layer": "fact",
+  "importance": 0.75,
+  "source": "conversation",
+  "namespace": "default",
+  "parent-id": null,
+  "display-title": "Python preference"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Unique memory identifier |
+| `content` | string | The stored knowledge |
+| `layer` | string | Semantic layer: `"domain"`, `"concept"`, `"fact"`, `"episode"`, or `"summary"` |
+| `importance` | float (0-1) | How important this memory is |
+| `source` | string or null | Origin identifier |
+| `namespace` | string | Memory namespace (default: `"default"`) |
+| `parent-id` | UUID or null | Parent in the layer hierarchy |
+| `display-title` | string or null | Short title (present when generated) |
+
+See [Memories](/api-reference/memories/) for detailed endpoint documentation.

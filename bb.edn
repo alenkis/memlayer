@@ -1,0 +1,263 @@
+{:paths ["bb"]
+
+ :tasks
+ {;; ---- Development ----
+
+  env
+  {:doc      "Generate .env from 1Password (requires `op` CLI)"
+   :requires ([tasks :as t])
+   :task     (t/env!)}
+
+  build
+  {:doc  "Resolve deps and compile project"
+   :task (do (shell "clojure" "-P" "-M:test")
+             (shell "clojure" "-M:test" "--print-test-plan" "--focus" ":unit"))}
+
+  server
+  {:doc      "Start HTTP server + nREPL (writes .nrepl-port)"
+   :requires ([tasks :as t])
+   :task     (t/shell-env "clojure" "-M:dev" "-m" "dev-main")}
+
+  repl-server
+  {:doc      "Start dev REPL with socket server on port 7888"
+   :requires ([tasks :as t])
+   :task     (t/shell-env "clojure"
+                          "-J--add-modules" "-Jjdk.incubator.vector"
+                          "-J--enable-native-access=ALL-UNNAMED"
+                          "-J-Dclojure.server.repl={:port 7888 :accept clojure.core.server/repl}"
+                          "-M:dev")}
+
+  mcp
+  {:doc      "Start MCP stdio server"
+   :requires ([tasks :as t])
+   :task     (t/shell-env "clojure" "-M:mcp")}
+
+  ;; ---- Code Quality ----
+
+  fmt
+  {:doc  "Format Clojure source files"
+   :task (shell "clojure" "-M:fmt" "fix" "src" "test" "dev")}
+
+  fmt-check
+  {:doc  "Check Clojure formatting (no changes)"
+   :task (shell "clojure" "-M:fmt" "check" "src" "test" "dev")}
+
+  lint
+  {:doc  "Run clj-kondo linter"
+   :task (shell "clj-kondo" "--lint" "src" "test" "--fail-level" "warning")}
+
+  test
+  {:doc  "Run all unit tests"
+   :task (shell "clojure" "-M:test" "--focus" ":unit")}
+
+  test-cljs
+  {:doc     "Run ClojureScript dashboard unit tests"
+   :depends [shadow-cljs-edn]
+   :task    (shell "clojure" "-A:dashboard" "-M" "-m" "shadow.cljs.devtools.cli" "compile" "test")}
+
+  check
+  {:doc     "Build, lint, and test"
+   :depends [build fmt-check lint test test-cljs]}
+
+  test-focus
+  {:doc  "Run specific test namespace (bb test-focus <ns>)"
+   :task (let [focus (or (first *command-line-args*)
+                         (System/getenv "FOCUS"))]
+           (when-not focus
+             (println "Usage: bb test-focus <namespace>")
+             (System/exit 1))
+           (shell "clojure" "-M:test" "--focus" focus))}
+
+  test-integration
+  {:doc      "Run integration tests (requires .env with API keys)"
+   :requires ([tasks :as t])
+   :task     (t/shell-env "clojure" "-M:integration")}
+
+  test-e2e
+  {:doc     "Run Playwright e2e tests (requires running server + dashboard-dev)"
+   :depends [config-json]
+   :task    (shell "npx" "playwright" "test" "--reporter=list,json")}
+
+  test-e2e-ui
+  {:doc     "Open Playwright interactive UI for e2e tests"
+   :depends [config-json]
+   :task    (shell "npx" "playwright" "test" "--ui")}
+
+  test-full
+  {:doc     "Run unit + integration + e2e tests (expensive — uses real providers)"
+   :depends [check test-integration test-e2e]}
+
+  ;; ---- Dashboard ----
+
+  dashboard-deps
+  {:doc  "Install npm dependencies for dashboard"
+   :task (shell "npm" "install")}
+
+  config-json
+  {:doc      "Export config.edn as JSON for e2e tests and tooling"
+   :requires ([tasks :as t])
+   :task     (when (t/stale? "config.json" ["config.edn" "bin/export-config" ".env"])
+               (t/shell-env "bash" "-c" "bb bin/export-config json > config.json"))}
+
+  shadow-cljs-edn
+  {:doc      "Generate shadow-cljs.edn from config.edn"
+   :requires ([tasks :as t])
+   :task     (when (t/stale? "shadow-cljs.edn" ["config.edn" "bin/export-config" ".env"])
+               (t/shell-env "bash" "-c" "bb bin/export-config shadow-edn > shadow-cljs.edn"))}
+
+  dashboard-dev
+  {:doc     "Start CLJS dashboard dev server (ports from config.edn)"
+   :depends [shadow-cljs-edn]
+   :task    (do (shell "npm" "run" "build:css")
+               (shell "npx" "shadow-cljs" "-A:dashboard" "watch" "dashboard"))}
+
+  dashboard-css
+  {:doc  "Watch and compile Tailwind CSS"
+   :task (shell "npm" "run" "dev:css")}
+
+  dashboard-build
+  {:doc     "Production build of CLJS dashboard"
+   :depends [shadow-cljs-edn dashboard-deps]
+   :task    (do (shell "npm" "run" "build:css")
+               (shell "npx" "shadow-cljs" "-A:dashboard" "release" "dashboard"))}
+
+  dashboard-deploy
+  {:doc     "Build and deploy dashboard to Vercel (production)"
+   :depends [dashboard-build]
+   :task    (do (shell "npx" "vercel" "build" "--prod")
+               (shell "npx" "vercel" "deploy" "--prebuilt" "--prod"))}
+
+  ;; ---- Build / Distribution ----
+
+  uberjar
+  {:doc              "Build distributable uberjar"
+   :override-builtin true
+   :task             (shell "clojure" "-T:build" "uber")}
+
+  clean
+  {:doc  "Remove build artifacts"
+   :task (shell "clojure" "-T:build" "clean")}
+
+  dist
+  {:doc      "Assemble distribution (jar + launcher)"
+   :depends  [uberjar]
+   :requires ([tasks :as t])
+   :task     (t/dist!)}
+
+  ;; ---- Docker / Deploy ----
+
+  docker-build
+  {:doc  "Build Docker image"
+   :task (shell "docker" "build" "--platform" "linux/amd64" "-t" "memlayer:latest" ".")}
+
+  docker-push
+  {:doc      "Push Docker image to ECR"
+   :requires ([tasks :as t])
+   :task     (let [region  (or (System/getenv "AWS_REGION") "us-east-1")
+                   ecr-url (t/tf-output "ecr_repository_url")]
+               (shell "bash" "-c"
+                      (str "aws ecr get-login-password --region " region
+                           " | docker login --username AWS --password-stdin " ecr-url))
+               (shell "docker" "tag" "memlayer:latest" (str ecr-url ":latest"))
+               (shell "docker" "push" (str ecr-url ":latest")))}
+
+  deploy
+  {:doc      "SSH to EC2 and pull/restart container"
+   :requires ([tasks :as t])
+   :task     (let [ip (t/tf-output "instance_public_ip")]
+               (shell "ssh" (str "ec2-user@" ip) "sudo /usr/local/bin/memlayer-deploy"))}
+
+  ship
+  {:doc     "Build, push, and deploy in one step"
+   :depends [docker-build docker-push deploy]}
+
+  release
+  {:doc      "Create and push a version tag (bb release v0.4.0)"
+   :requires ([tasks :as t])
+   :task     (t/release!)}
+
+  ;; ---- Infrastructure ----
+
+  aws-configure
+  {:doc  "Configure AWS CLI with credentials from 1Password"
+   :task (let [region (or (System/getenv "AWS_REGION") "us-east-1")]
+           (shell "bash" "-c" "aws configure set aws_access_key_id \"$(op read 'op://MemLayer/AWSMemlayerDeploy/accessKeyId')\"")
+           (shell "bash" "-c" "aws configure set aws_secret_access_key \"$(op read 'op://MemLayer/AWSMemlayerDeploy/secretAccessKey')\"")
+           (shell "aws" "configure" "set" "region" region)
+           (println "AWS CLI configured. Verifying...")
+           (shell "aws" "sts" "get-caller-identity"))}
+
+  dynamodb-local
+  {:doc  "Start DynamoDB Local via Docker (port 8000)"
+   :task (shell "docker" "compose" "up" "-d" "dynamodb-local")}
+
+  dynamodb-stop
+  {:doc  "Stop DynamoDB Local"
+   :task (shell "docker" "compose" "down")}
+
+  infra-bootstrap
+  {:doc  "Create S3 + DynamoDB for Terraform state (run once)"
+   :task (shell "bash" "infra/bootstrap.sh")}
+
+  infra-init
+  {:doc  "Initialize Terraform"
+   :task (shell {:dir "infra"} "terraform" "init")}
+
+  infra-plan
+  {:doc      "Plan Terraform changes (secrets from 1Password)"
+   :requires ([tasks :as t])
+   :task     (t/infra-env-shell! "terraform plan")}
+
+  infra-apply
+  {:doc      "Apply Terraform changes (secrets from 1Password)"
+   :requires ([tasks :as t])
+   :task     (t/infra-env-shell! "terraform apply")}
+
+  infra-destroy
+  {:doc      "Destroy all Terraform-managed infrastructure (secrets from 1Password)"
+   :requires ([tasks :as t])
+   :task     (t/infra-env-shell! "terraform destroy")}
+
+  infra-output
+  {:doc  "Show Terraform outputs"
+   :task (shell {:dir "infra"} "terraform" "output")}
+
+  infra-url
+  {:doc      "Show the server URL"
+   :requires ([tasks :as t])
+   :task     (print (t/tf-output "app_url"))}
+
+  ;; ---- Local Mode ----
+
+  local-server
+  {:doc      "Start memlayer in local mode (JVM, no auth, file-backed storage)"
+   :requires ([tasks :as t])
+   :task     (t/shell-env "clojure" "-M:local")}
+
+  local-dashboard-build
+  {:doc     "Production build of dashboard for local mode bundling"
+   :depends [shadow-cljs-edn dashboard-deps]
+   :task    (do (shell "npm" "run" "build:css")
+               (shell "npx" "shadow-cljs" "-A:dashboard" "release" "dashboard"))}
+
+  local-uberjar
+  {:doc     "Build local-mode uberjar (JVM)"
+   :depends [local-dashboard-build]
+   :task    (shell "clojure" "-T:build" "local-uber")}
+
+  local-native-uberjar
+  {:doc  "Build local-mode uberjar for GraalVM native-image"
+   :task (shell "clojure" "-T:build" "native-uber")}
+
+  local-native-image
+  {:doc     "Build GraalVM native binary from uberjar"
+   :depends [local-native-uberjar]
+   :task    (shell "/Library/Java/JavaVirtualMachines/graalvm-25.jdk/Contents/Home/bin/native-image"
+                   "-jar" "target/memlayer-local.jar"
+                   "-o" "target/memlayer-local"
+                   "--no-fallback"
+                   "--initialize-at-build-time"
+                   "--enable-url-protocols=http,https"
+                   "-H:+ReportExceptionStackTraces"
+                   "-J--add-modules=jdk.incubator.vector"
+                   "-J--enable-native-access=ALL-UNNAMED")}}}

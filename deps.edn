@@ -1,0 +1,104 @@
+{:paths ["src/clj" "src/cljc" "src/cljs" "resources"]
+
+ :deps
+ {org.clojure/clojure            {:mvn/version "1.12.0"}
+  ;; System lifecycle
+  integrant/integrant             {:mvn/version "1.0.1"}
+  ;; HTTP server
+  http-kit/http-kit               {:mvn/version "2.8.0"}
+  ;; Routing
+  metosin/reitit-ring             {:mvn/version "0.7.2"}
+  metosin/reitit-malli            {:mvn/version "0.7.2"}
+  ;; Schema
+  metosin/malli                   {:mvn/version "0.16.4"}
+  ;; Content negotiation
+  metosin/muuntaja                {:mvn/version "0.6.10"}
+  metosin/reitit-middleware       {:mvn/version "0.7.2"}
+  ;; Ring
+  ring/ring-core                  {:mvn/version "1.12.2"}
+  ;; Database
+  io.replikativ/datahike          {:mvn/version "0.7.1624"}
+  ;; Vector DB
+  org.replikativ/proximum         {:mvn/version "0.1.23"
+                                    :exclusions [org.slf4j/slf4j-simple]}
+  ;; Columnar analytics
+  org.replikativ/stratum          {:mvn/version "0.1.20"}
+  ;; HTTP client (LLM providers)
+  hato/hato                       {:mvn/version "0.9.0"}
+  ;; JSON
+  metosin/jsonista                {:mvn/version "0.3.11"}
+  ;; Logging
+  org.clojure/tools.logging       {:mvn/version "1.3.0"}
+  ch.qos.logback/logback-classic  {:mvn/version "1.5.6"}
+  net.logstash.logback/logstash-logback-encoder {:mvn/version "8.0"}
+  ;; Async + flow
+  org.clojure/core.async          {:mvn/version "1.9.847-alpha3"}
+  ;; Firebase JWT auth
+  com.auth0/java-jwt              {:mvn/version "4.4.0"}
+  com.auth0/jwks-rsa              {:mvn/version "0.22.1"}
+  ;; AWS DynamoDB (rate limiting)
+  com.cognitect.aws/api           {:mvn/version "0.8.692"}
+  com.cognitect.aws/endpoints     {:mvn/version "1.1.12.772"}
+  com.cognitect.aws/dynamodb      {:mvn/version "869.2.1687.0"}
+  ;; Configuration
+  aero/aero                       {:mvn/version "1.1.6"}}
+
+ :aliases
+ {:dev
+  {:extra-paths ["dev"]
+   :extra-deps
+   {integrant/repl                          {:mvn/version "0.4.0"}
+    io.github.cdimascio/dotenv-java         {:mvn/version "3.2.0"}
+    nrepl/nrepl                             {:mvn/version "1.5.2"}
+    cider/cider-nrepl                       {:mvn/version "0.58.0"}}
+   :jvm-opts ["--add-modules" "jdk.incubator.vector" "--enable-native-access=ALL-UNNAMED"]}
+
+  :test
+  {:extra-paths ["test"]
+   :extra-deps
+   {lambdaisland/kaocha      {:mvn/version "1.91.1392"}
+    org.clojure/test.check   {:mvn/version "1.1.3"}}
+   :jvm-opts ["--add-modules" "jdk.incubator.vector" "--enable-native-access=ALL-UNNAMED"]
+   :main-opts ["-m" "kaocha.runner"]}
+
+  :mcp
+  {:jvm-opts ["--add-modules" "jdk.incubator.vector" "--enable-native-access=ALL-UNNAMED"]
+   :main-opts ["-m" "memlayer.mcp.server"]}
+
+  :server
+  {:jvm-opts ["--add-modules" "jdk.incubator.vector" "--enable-native-access=ALL-UNNAMED"]
+   :main-opts ["-m" "memlayer.system"]}
+
+  :integration
+  {:extra-paths ["test"]
+   :extra-deps
+   {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+   :jvm-opts ["--add-modules" "jdk.incubator.vector" "--enable-native-access=ALL-UNNAMED"]
+   :main-opts ["-m" "kaocha.runner" "--focus" ":integration" "--reporter" "kaocha.report/documentation"]}
+
+  :fmt
+  {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.13.0"}}
+   :main-opts ["-m" "cljfmt.main"]}
+
+  :build
+  {:deps {io.github.clojure/tools.build {:mvn/version "0.10.6"}}
+   :ns-default build}
+
+  ;; GraalVM SDK on classpath during AOT so superv.async's native-image-build?
+  ;; macro detects GraalVM and uses dummy-supervisor (avoids timeout thread).
+  :native
+  {:extra-deps {org.graalvm.sdk/nativeimage {:mvn/version "25.0.2"}}}
+
+  :local
+  {:jvm-opts ["--add-modules" "jdk.incubator.vector" "--enable-native-access=ALL-UNNAMED"]
+   :main-opts ["-m" "memlayer.local"]}
+
+  :dashboard
+  {:extra-deps {thheller/shadow-cljs          {:mvn/version "2.28.22"}
+                reagent/reagent                {:mvn/version "1.3.0"}
+                re-frame/re-frame              {:mvn/version "1.4.3"}
+                metosin/reitit-frontend        {:mvn/version "0.7.2"}
+                day8.re-frame/http-fx          {:mvn/version "0.2.4"}
+                binaryage/devtools             {:mvn/version "1.0.7"}
+                nrepl/nrepl                    {:mvn/version "1.5.2"}
+                cider/cider-nrepl              {:mvn/version "0.58.0"}}}}}

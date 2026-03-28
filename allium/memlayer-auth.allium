@@ -1,0 +1,191 @@
+-- allium: 3
+-- memlayer-auth.allium
+
+-- Scope: Authentication, authorization, and multi-tenancy
+-- Includes: API tokens, Firebase JWT validation, user isolation
+-- Depends on: memlayer-core.allium (Memory entity references)
+
+use "./memlayer-core.allium" as core
+
+-- =============================================================================
+-- Configuration
+-- =============================================================================
+
+config {
+    max_active_tokens: Integer = 10
+    token_prefix: String = "mlk_"
+}
+
+-- =============================================================================
+-- Entities
+-- =============================================================================
+
+-- Firebase is the external identity provider.
+-- The system never stores user credentials; it validates JWTs against
+-- Google's public keys and extracts the user's identity.
+external entity FirebaseUser {
+    uid: String
+    email: String?
+    name: String?
+}
+
+-- API token for programmatic access. The plaintext is returned exactly
+-- once at creation time and never stored. Only the SHA-256 hash is persisted.
+entity Token {
+    name: String                    -- human-readable label
+    hash: String                    -- SHA-256 hex of plaintext (stored, used for lookups)
+    prefix: String                  -- first 12 chars + "..." (for display)
+    owner: String                   -- Firebase UID
+    created_at: Timestamp
+    revoked_at: Timestamp?          -- null = active; set = revoked
+
+    -- Derived
+    is_active: revoked_at = null
+}
+
+-- Per-request tenant context. Derived from the authenticated identity.
+-- Not stored; computed on every request from the user's identifier.
+value UserContext {
+    user_id: String                 -- Firebase UID or dev-mode ID
+    database_name: String           -- "user_" + sanitized(user_id)
+}
+
+-- =============================================================================
+-- Token Lifecycle
+-- =============================================================================
+
+-- Plaintext format: "mlk_" + UUID v4 (no dashes). ~36 characters.
+-- The plaintext is returned to the caller exactly once at creation time.
+-- Only the SHA-256 hash is stored in the database.
+
+rule CreateToken {
+    when: CreateToken(owner, name)
+
+    let active_tokens = Token where owner = owner and is_active
+    requires: active_tokens.count < config.max_active_tokens
+
+    ensures: Token.created(
+        name: name,
+        hash: sha256(plaintext),
+        prefix: take(plaintext, 12) + "...",
+        owner: owner,
+        created_at: now,
+        revoked_at: null
+    )
+    -- Plaintext returned to caller exactly once
+    ensures: TokenCreated(plaintext, token)
+}
+
+rule ValidateToken {
+    when: ValidateToken(plaintext)
+
+    let token = Token where hash = sha256(plaintext)
+
+    if not exists token:
+        ensures: AuthRejected("invalid token")
+    else if not token.is_active:
+        ensures: AuthRejected("token revoked")
+    else:
+        ensures: AuthAccepted(UserContext(
+            user_id: token.owner,
+            database_name: "user_" + sanitize(token.owner)
+        ))
+}
+
+rule RevokeToken {
+    when: RevokeToken(token_id, requesting_user)
+
+    let token = Token where id = token_id
+    requires: exists token
+    requires: token.owner = requesting_user
+
+    -- Soft-delete: revoked tokens remain in the DB for audit/display
+    ensures: token.revoked_at = now
+}
+
+-- =============================================================================
+-- Authentication Pipeline
+-- =============================================================================
+
+-- The auth middleware tries three strategies in order:
+--   1. X-API-Key header -> token hash lookup
+--   2. Authorization: Bearer <jwt> -> Firebase JWT validation
+--   3. X-User-Id header (dev mode only) -> auto-provision
+-- First match wins. No match -> 401.
+
+rule AuthenticateRequest {
+    when: AuthenticateRequest(api_key, bearer_token, user_id_header, dev_mode)
+
+    if api_key != null:
+        ensures: ValidateToken(api_key)
+    else if bearer_token != null:
+        ensures: ValidateFirebaseJWT(bearer_token)
+    else if dev_mode and user_id_header != null:
+        ensures: ProvisionDevUser(user_id_header)
+    else:
+        ensures: AuthRejected("no credentials")
+}
+
+rule ValidateFirebaseJWT {
+    when: ValidateFirebaseJWT(bearer_token)
+
+    -- Validates JWT signature against Google's cached public keys.
+    -- Checks audience, issuer, expiration, and auth_time.
+    let firebase_user = validate_jwt(bearer_token)
+
+    -- auth_time must be present and not in the future.
+    -- This ensures tokens issued before a security event (password change,
+    -- account revocation) are rejected.
+    requires: firebase_user.auth_time != null
+    requires: firebase_user.auth_time <= now
+
+    if firebase_user = null:
+        ensures: AuthRejected("invalid or expired JWT")
+    else:
+        ensures: AuthAccepted(UserContext(
+            user_id: firebase_user.uid,
+            database_name: "user_" + sanitize(firebase_user.uid)
+        ))
+}
+
+-- Dev/test mode only. Accepts any user ID without authentication.
+-- Creates the per-user database if it doesn't exist.
+rule ProvisionDevUser {
+    when: ProvisionDevUser(user_id)
+
+    ensures: AuthAccepted(UserContext(
+        user_id: user_id,
+        database_name: "user_" + sanitize(user_id)
+    ))
+}
+
+deferred validate_jwt      -- Firebase JWT validation against Google's cached public keys
+deferred sanitize          -- Strip non-alphanumeric characters from user ID
+
+-- =============================================================================
+-- Multi-Tenancy Isolation
+-- =============================================================================
+
+-- Every authenticated request operates within an isolated tenant scope.
+-- Two isolation mechanisms enforce this:
+--
+-- 1. Datahike: Each user operates within a namespace-isolated scope.
+--    All memory queries and mutations are filtered by namespace.
+--
+-- 2. Proximum: Vector embeddings are isolated per namespace.
+--    Every search, upsert, and delete includes a mandatory namespace filter.
+--
+-- 3. Namespaces: Within a user's tenant, namespaces provide a second level
+--    of isolation. Each namespace has its own pool of memories, relationships,
+--    and vector embeddings. Namespace is a required parameter on all core
+--    operations (retain, recall, reflect, forget). Cross-namespace queries
+--    are not supported.
+--
+-- Invariant: User A's operations never read or modify User B's data.
+-- Invariant: Admin reset by User A does not affect User B's data.
+-- Invariant: Namespace A's memories are never visible in Namespace B's queries.
+
+-- Paths that bypass authentication:
+--   /health                 -- health check
+--   /api/v1/debug/state     -- debug state (should be restricted in production)
+--   /api/v1/account         -- account endpoints use per-handler Firebase JWT auth

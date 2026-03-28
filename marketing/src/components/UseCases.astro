@@ -1,0 +1,42 @@
+---
+const useCases = [
+  {
+    title: 'AI Assistants with Memory',
+    description: 'Build assistants that remember user preferences, past conversations, and decisions. No more repeating context every session.',
+    tag: 'Customer Experience',
+  },
+  {
+    title: 'Autonomous Agent Workflows',
+    description: 'Multi-step agents that retain state across tasks. Share knowledge between agents in a workflow without brittle handoff mechanisms.',
+    tag: 'Automation',
+  },
+  {
+    title: 'Enterprise Knowledge Management',
+    description: 'Capture institutional knowledge from AI interactions. Time-travel queries let you audit what was known and when for compliance.',
+    tag: 'Compliance & Governance',
+  },
+];
+---
+
+<section id="use-cases" class="border-t border-border py-24">
+  <div class="mx-auto max-w-6xl px-6">
+    <h2 class="mb-4 text-center text-3xl font-bold md:text-4xl">
+      Built For
+    </h2>
+    <p class="mx-auto mb-16 max-w-2xl text-center text-text-muted">
+      Teams building AI products that need to remember.
+    </p>
+
+    <div class="grid gap-6 md:grid-cols-3">
+      {useCases.map(useCase => (
+        <div class="rounded-xl border border-border bg-bg-card p-8 transition-colors hover:border-border-highlight hover:bg-bg-card-hover">
+          <div class="mb-4 inline-block rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent">
+            {useCase.tag}
+          </div>
+          <h3 class="mb-3 text-xl font-semibold">{useCase.title}</h3>
+          <p class="text-text-muted leading-relaxed">{useCase.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

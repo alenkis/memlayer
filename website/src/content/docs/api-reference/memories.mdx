@@ -1,0 +1,286 @@
+---
+title: "Memories"
+description: "Memory endpoints and core operations"
+---
+
+## POST /api/v1/retain
+
+Ingest content into the knowledge graph.
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/retain \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_key" \
+  -d '{"content": "User prefers Python for data analysis", "source": "conversation"}'
+```
+
+**Request:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `content` | string | Yes | Content to process and extract memories from |
+| `source` | string | Yes | Origin identifier |
+| `namespace` | string | No | Namespace to store in (default: `"default"`) |
+
+**Response:**
+
+```json
+{
+  "operations": [
+    {
+      "type": "create",
+      "memory_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "content": "User prefers Python for data analysis",
+      "reason": "New fact about programming preference"
+    }
+  ],
+  "summary_triggered": false,
+  "usage": {
+    "extraction": {"prompt_tokens": 150, "completion_tokens": 50, "total_tokens": 200},
+    "decision": {"prompt_tokens": 200, "completion_tokens": 30, "total_tokens": 230},
+    "total_tokens": 430
+  }
+}
+```
+
+---
+
+## POST /api/v1/retain/batch
+
+Batch retain multiple items in a single call. Triggers auto-reflect after processing.
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/retain/batch \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_key" \
+  -d '{
+    "namespace": "default",
+    "items": [
+      {"content": "User prefers Python for data analysis", "source": "conversation"},
+      {"content": "User works at Acme Corp", "source": "conversation"}
+    ]
+  }'
+```
+
+**Request:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `namespace` | string | Yes | Namespace to store in |
+| `items` | array | Yes | Array of `{content, source}` objects |
+
+---
+
+## POST /api/v1/recall
+
+Semantic search for memories.
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/recall \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_key" \
+  -d '{"query": "programming language", "limit": 5, "expand-graph": true}'
+```
+
+**Request:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | Yes | Natural language search |
+| `namespace` | string | No | Filter by namespace |
+| `limit` | int | No | Max results (default: 10) |
+| `layer` | string | No | Filter by semantic layer (e.g., `"fact"`, `"concept"`) |
+| `as-of` | ISO 8601 | No | Query the database at a point in time |
+| `expand-graph` | bool | No | Include ancestors, summaries, siblings, and relationships |
+
+**Response:**
+
+```json
+{
+  "query": "programming language",
+  "answer": "Based on stored memories, the user prefers Python for data analysis.",
+  "memories": [
+    {
+      "memory-id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "content": "User prefers Python for data analysis",
+      "layer": "fact",
+      "importance": 0.75,
+      "source": "conversation",
+      "namespace": "default",
+      "parent-id": null,
+      "distance": 0.42,
+      "ancestors": [],
+      "summaries": [],
+      "siblings": [],
+      "related": []
+    }
+  ],
+  "count": 1,
+  "usage": {"prompt_tokens": 50, "completion_tokens": 0, "total_tokens": 50}
+}
+```
+
+The `distance` field indicates semantic distance (lower = more similar). The `answer` field contains an LLM-generated answer synthesized from the matched memories. When `expand-graph` is true, each memory includes its graph context.
+
+---
+
+## POST /api/v1/reflect
+
+Consolidate and organize memories.
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/reflect \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_key" \
+  -d '{"namespace": "default"}'
+```
+
+**Request:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `namespace` | string | No | Scope to a namespace |
+| `dry-run` | bool | No | Preview without applying (default: false) |
+| `phases` | string[] | No | Which phases to run: `"organize"`, `"summarize"`, `"connect"`, `"curate"` (default: all) |
+| `since` | ISO 8601 or int | No | Only process memories created after this point |
+
+---
+
+## POST /api/v1/forget
+
+Remove a memory from active queries. The memory is preserved in Datahike history for audit purposes.
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/forget \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_key" \
+  -d '{"memory-id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}'
+```
+
+**Response:**
+
+```json
+{
+  "memories-removed": 1,
+  "relationships-removed": 2
+}
+```
+
+---
+
+## POST /api/v1/evict
+
+Permanently delete a memory. Unlike forget, evict removes the memory from Datahike history as well -- data cannot be recovered. Use for GDPR compliance.
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/evict \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_key" \
+  -d '{"memory-id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}'
+```
+
+**Response:**
+
+```json
+{
+  "memories-evicted": 1,
+  "relationships-removed": 2
+}
+```
+
+---
+
+## POST /api/v1/ingest
+
+Bulk memory ingestion.
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/ingest \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_key" \
+  -d '{
+    "items": [
+      {"content": "Alice is a software engineer", "source": "import"},
+      {"content": "Alice lives in Berlin", "source": "import", "namespace": "profiles"}
+    ]
+  }'
+```
+
+**Request:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `items` | array | Yes | Array of objects with `content` (required), `source` (required), and optional `namespace` |
+
+---
+
+## GET /api/v1/memories
+
+List memories with optional filters.
+
+```bash
+curl -H "X-API-Key: mlk_your_key" \
+  "https://api.memlayer.dev/api/v1/memories?namespace=default&layer=fact&limit=20"
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `namespace` | string | Filter by namespace |
+| `layer` | string | Filter by layer (e.g., `"fact"`, `"concept"`) |
+| `limit` | int | Max results (default: 50) |
+| `offset` | int | Pagination offset (default: 0) |
+
+**Response:**
+
+```json
+{
+  "memories": [...],
+  "total": 142,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+---
+
+## GET /api/v1/memories/:id
+
+Get a single memory by UUID. Returns 404 if not found.
+
+```bash
+curl -H "X-API-Key: mlk_your_key" \
+  https://api.memlayer.dev/api/v1/memories/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+---
+
+## DELETE /api/v1/memories/:id
+
+Delete a single memory. Returns `204 No Content`.
+
+```bash
+curl -X DELETE -H "X-API-Key: mlk_your_key" \
+  https://api.memlayer.dev/api/v1/memories/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+---
+
+## GET /api/v1/memories/:id/children
+
+Get child memories in the layer hierarchy.
+
+```bash
+curl -H "X-API-Key: mlk_your_key" \
+  https://api.memlayer.dev/api/v1/memories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/children
+```
+
+---
+
+## GET /api/v1/memories/:id/history
+
+Get the change history for a memory (Datahike transaction history).
+
+```bash
+curl -H "X-API-Key: mlk_your_key" \
+  https://api.memlayer.dev/api/v1/memories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/history
+```

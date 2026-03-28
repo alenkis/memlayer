@@ -1,0 +1,35 @@
+---
+const links = [
+  { label: 'Benefits', href: '#benefits' },
+  { label: 'How It Works', href: '#how-it-works' },
+  { label: 'Use Cases', href: '#use-cases' },
+  { label: 'Pricing', href: '#pricing' },
+];
+const docsUrl = 'https://docs.memlayer.dev';
+---
+
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-border bg-bg/80 backdrop-blur-md">
+  <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+    <a href="/" class="text-xl font-bold text-text">MemLayer</a>
+
+    <div class="hidden items-center gap-8 md:flex">
+      {links.map(link => (
+        <a href={link.href} class="text-sm text-text-muted transition-colors hover:text-text">
+          {link.label}
+        </a>
+      ))}
+    </div>
+
+    <div class="flex items-center gap-4">
+      <a href={docsUrl} class="text-sm text-text-muted transition-colors hover:text-text">
+        Docs
+      </a>
+      <a
+        href={`${docsUrl}/getting-started/installation/`}
+        class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-bright"
+      >
+        Get Started
+      </a>
+    </div>
+  </div>
+</nav>

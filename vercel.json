@@ -1,0 +1,9 @@
+{
+  "buildCommand": "",
+  "outputDirectory": "resources/public",
+  "framework": null,
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://api.memlayer.dev/api/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

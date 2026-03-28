@@ -1,0 +1,27 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Nav from '../components/Nav.astro';
+import Hero from '../components/Hero.astro';
+import Benefits from '../components/Benefits.astro';
+import HowItWorks from '../components/HowItWorks.astro';
+import UseCases from '../components/UseCases.astro';
+import Comparison from '../components/Comparison.astro';
+import Testimonials from '../components/Testimonials.astro';
+import Pricing from '../components/Pricing.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+---
+
+<Layout title="MemLayer - Persistent Memory for AI Agents" description="A persistent knowledge graph for AI agents. Accessible via MCP and REST API.">
+  <Nav />
+  <main>
+    <Hero />
+    <Benefits />
+    <HowItWorks />
+    <UseCases />
+    <Comparison />
+    <Testimonials />
+    <Pricing />
+  </main>
+  <Footer />
+</Layout>

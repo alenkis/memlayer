@@ -1,0 +1,50 @@
+---
+title: "Temporal Queries"
+description: "Querying historical states of the knowledge graph"
+---
+
+## How MemLayer Handles Time
+
+MemLayer uses Datahike, a database that automatically tracks the history of every transaction. When a memory is created, updated, or retracted, Datahike records the change as a new transaction. Previous states are preserved and queryable.
+
+This means you can ask: **"What did the knowledge graph look like at a specific point in time?"**
+
+## The `as-of` Parameter
+
+The recall endpoint accepts `as-of` to query the knowledge graph at a prior point in time:
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/recall \
+  -H "Content-Type: application/json" \
+  -d '{"query": "where does the user work", "as-of": "2025-01-15T00:00:00Z"}'
+```
+
+This returns memories as they existed at that timestamp. If a memory was retracted (via forget) after that time, it will still appear in `as-of` results because it existed at the queried point.
+
+## What This Enables
+
+**Audit trail**: See what the system knew at any past moment. Useful for debugging or reviewing how memories evolved.
+
+**Historical context**: If a memory was updated (old one retracted, new one created), querying with `as-of` before the update returns the original version.
+
+**Correction safety**: When retain updates an existing memory, the old memory is retracted from the current database but preserved in transaction history. Nothing is lost.
+
+## How Updates Work
+
+When retain decides that new content updates an existing memory:
+
+1. The old memory is retracted (removed from active queries)
+2. A new memory is created with the updated content
+3. Both the retraction and creation are recorded as transactions
+
+The old memory is no longer visible in regular queries, but it remains accessible through `as-of` queries or the history endpoint.
+
+## Memory History
+
+You can view the transaction history of a specific memory:
+
+```bash
+curl https://api.memlayer.dev/api/v1/memories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/history
+```
+
+This returns the sequence of Datahike transactions that affected this memory.

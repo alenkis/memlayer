@@ -1,0 +1,67 @@
+---
+title: "Knowledge Graph"
+description: "Memories, relationships, and graph structure"
+---
+
+## Memories as Nodes
+
+Every memory is a node in the knowledge graph:
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique identifier (UUID) |
+| `content` | The knowledge, as natural language text |
+| `layer` | Semantic layer: `"domain"`, `"concept"`, `"fact"`, `"episode"`, or `"summary"` |
+| `importance` | How important this memory is (0.0 to 1.0) |
+| `source` | Origin identifier (e.g., `"conversation"`, `"import"`) |
+| `namespace` | Isolation namespace for the memory |
+| `parent-id` | Link to the parent memory in the hierarchy |
+
+## Relationships
+
+Memories are connected by typed edges:
+
+| Field | Description |
+|-------|-------------|
+| `source-id` | Origin memory |
+| `target-id` | Target memory |
+| `type` | Relationship kind (e.g., `"related-to"`, `"elaborates"`, `"contradicts"`) |
+| `description` | Human-readable description of the connection |
+
+Relationship types are **not prescribed** -- the LLM infers appropriate types during retain. Common types include `related-to`, `elaborates`, `contradicts`, `supports`, and `refines`.
+
+## Graph Hierarchy
+
+The `parent-id` field creates a tree mirroring the [semantic layers](/concepts/semantic-layers/):
+
+```
+Domain
+  └── Concept
+        └── Fact
+              └── Episode
+```
+
+Orphaned memories (no `parent-id`) are candidates for organization by [reflect](/operations/reflect/).
+
+## How the Graph Improves Recall
+
+Semantic search finds entry points. Graph traversal discovers related memories that wouldn't match the query directly:
+
+- **Parent**: A broader concept providing context
+- **Siblings**: Related facts under the same parent
+- **Relationships**: Explicitly linked memories
+- **Children**: More specific details
+
+A query for "technical skills" might match "experienced with Python". Graph traversal then discovers the parent concept "Data Engineering", siblings like "has used SQL", and children like "built a data pipeline at work".
+
+Use `expand-graph: true` on recall to include graph context:
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/recall \
+  -H "Content-Type: application/json" \
+  -d '{"query": "technical skills", "expand-graph": true}'
+```
+
+## Memory Namespaces
+
+Each agent has a completely isolated namespace -- its own knowledge graph, relationships, and hierarchy. One agent's operations have no effect on another's data.

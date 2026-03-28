@@ -1,0 +1,39 @@
+---
+const testimonials = [
+  {
+    quote: 'MemLayer gave our agents the memory they needed to go from demos to production.',
+    author: 'Coming Soon',
+    role: '',
+  },
+  {
+    quote: 'The temporal queries changed how we think about AI audit trails.',
+    author: 'Coming Soon',
+    role: '',
+  },
+  {
+    quote: 'We replaced three different tools with MemLayer and simplified our entire agent stack.',
+    author: 'Coming Soon',
+    role: '',
+  },
+];
+---
+
+<section class="border-t border-border py-24">
+  <div class="mx-auto max-w-6xl px-6">
+    <h2 class="mb-16 text-center text-3xl font-bold md:text-4xl">
+      What Teams Are Saying
+    </h2>
+
+    <div class="grid gap-6 md:grid-cols-3">
+      {testimonials.map(t => (
+        <div class="rounded-xl border border-border bg-bg-card p-8">
+          <p class="mb-6 text-text-muted italic leading-relaxed">"{t.quote}"</p>
+          <div>
+            <div class="font-medium">{t.author}</div>
+            {t.role && <div class="text-sm text-text-muted">{t.role}</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

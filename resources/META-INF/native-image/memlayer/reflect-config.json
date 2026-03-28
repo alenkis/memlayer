@@ -1,0 +1,12 @@
+[
+  {
+    "name": "proximum.hnsw.HnswIndex",
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "proximum.hnsw.TransientHnswIndex",
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  }
+]

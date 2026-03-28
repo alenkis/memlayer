@@ -1,0 +1,98 @@
+---
+title: "Quickstart: API"
+description: "Get started with the MemLayer REST API"
+---
+
+This guide walks through the core operations using `curl`.
+
+## Prerequisites
+
+- [Installation](/getting-started/installation/) completed
+- API token ready (`mlk_...`)
+
+## Step 1: Store a memory (retain)
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/retain \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_api_key_here" \
+  -d '{"content": "User prefers Python for data analysis", "source": "conversation"}'
+```
+
+Example response:
+
+```json
+{
+  "operations": [
+    {
+      "type": "create",
+      "memory_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "content": "User prefers Python for data analysis",
+      "reason": "New fact about user programming language preference"
+    }
+  ],
+  "summary_triggered": false
+}
+```
+
+The retain pipeline extracts entities from the input, decides whether to create or update, generates a vector embedding, and stores everything in Datahike and the Proximum vector index.
+
+## Step 2: Search memories (recall)
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/recall \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_api_key_here" \
+  -d '{"query": "programming language", "limit": 5}'
+```
+
+Example response:
+
+```json
+{
+  "query": "programming language",
+  "answer": "The user prefers Python for data analysis.",
+  "memories": [
+    {
+      "memory-id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "content": "User prefers Python for data analysis",
+      "layer": "fact",
+      "importance": 0.75,
+      "distance": 0.42
+    }
+  ],
+  "count": 1
+}
+```
+
+Recall converts the query into a vector embedding and performs a semantic search. Results are ranked by distance (lower = more similar).
+
+## Step 3: Consolidate memories (reflect)
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/reflect \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_api_key_here" \
+  -d '{}'
+```
+
+Reflect scans your stored memories and groups related facts into higher-level concepts and domains.
+
+## Step 4: Forget a memory
+
+Use the `memory-id` from a recall response to remove a specific memory:
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/forget \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_api_key_here" \
+  -d '{"memory-id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}'
+```
+
+Forget removes the memory from active queries and deletes its embedding. Datahike retains the historical record for audit purposes, but the memory will no longer appear in recall results.
+
+## Next steps
+
+- [Concepts](/concepts/overview/) -- understand semantic layers, temporal queries, and the knowledge graph
+- [API Reference](/api-reference/overview/) -- full endpoint documentation with request/response schemas
+- [MCP Integration](/mcp/setup/) -- use MemLayer as a tool in Claude Desktop or Claude Code

@@ -1,0 +1,53 @@
+---
+title: "Relationships"
+description: "Relationship endpoints"
+---
+
+Relationships connect memories in the knowledge graph. They are created automatically during retain operations when the LLM infers meaningful connections between memories.
+
+## Relationship Object
+
+```json
+{
+  "id": "r1-uuid",
+  "source-id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "target-id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "type": "elaborates",
+  "description": "Adds implementation details about the data pipeline"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Relationship identifier |
+| `source-id` | UUID | Origin memory |
+| `target-id` | UUID | Target memory |
+| `type` | string | Relationship kind (free-form, LLM-inferred) |
+| `description` | string or null | Human-readable description of the relationship |
+
+## Relationship Types
+
+Types are free-form -- the LLM infers appropriate types during retain. It prefers reusing existing types when they fit. Common types:
+
+| Type | Example |
+|------|---------|
+| `elaborates` | Adds detail to an existing memory |
+| `related-to` | Thematic connection |
+| `contradicts` | Conflicting information |
+| `supports` | Reinforcing evidence |
+| `caused-by` | Causal relationship |
+| `refines` | More specific version of a memory |
+
+---
+
+## POST /api/v1/relationships
+
+Fetch relationships for one or more memories.
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/relationships \
+  -H "Content-Type: application/json" \
+  -d '{"memory-ids": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890", "b2c3d4e5-f6a7-8901-bcde-f12345678901"]}'
+```
+
+The request body is a JSON object with a `memory-ids` array. The response includes all relationships where any of the provided UUIDs appear as `source-id` or `target-id`. For a single memory, pass a one-element array.

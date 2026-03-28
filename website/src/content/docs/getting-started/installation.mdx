@@ -1,0 +1,30 @@
+---
+title: "Installation"
+description: "Get started with MemLayer"
+---
+
+## Create an account
+
+Sign up at [memlayer.dev](https://memlayer.dev) to get access to the MemLayer dashboard.
+
+## Get your API token
+
+1. Open the [dashboard](https://app.memlayer.dev)
+2. Navigate to **API Tokens**
+3. Create a new token
+
+Your token will look like `mlk_...`. You'll need it for both the REST API and MCP integration.
+
+## Verify access
+
+```bash
+curl -H "X-API-Key: mlk_your_api_key_here" \
+  https://api.memlayer.dev/health
+```
+
+You should get a `200 OK` response.
+
+## Next steps
+
+- [Connect Your Agent](/getting-started/setup/) -- set up Claude Code, Cursor, Windsurf, or any MCP client
+- [Quickstart: API](/getting-started/quickstart-api/) -- use the REST API directly with curl

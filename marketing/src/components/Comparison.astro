@@ -1,0 +1,48 @@
+---
+const features = [
+  { name: 'Persistent agent memory', memlayer: true, vectorDb: false, rag: false },
+  { name: 'Time-travel queries', memlayer: true, vectorDb: false, rag: false },
+  { name: 'Knowledge graph', memlayer: true, vectorDb: false, rag: false },
+  { name: 'Entity deduplication', memlayer: true, vectorDb: false, rag: false },
+  { name: 'MCP native support', memlayer: true, vectorDb: false, rag: false },
+  { name: 'REST API', memlayer: true, vectorDb: true, rag: true },
+  { name: 'Semantic search', memlayer: true, vectorDb: true, rag: true },
+  { name: 'Managed cloud', memlayer: true, vectorDb: true, rag: false },
+  { name: 'Audit trail', memlayer: true, vectorDb: false, rag: false },
+  { name: 'Knowledge consolidation (reflect)', memlayer: true, vectorDb: false, rag: false },
+];
+---
+
+<section class="border-t border-border py-24">
+  <div class="mx-auto max-w-4xl px-6">
+    <h2 class="mb-4 text-center text-3xl font-bold md:text-4xl">
+      How MemLayer Compares
+    </h2>
+    <p class="mx-auto mb-16 max-w-2xl text-center text-text-muted">
+      More than a vector database. Purpose-built for agent memory.
+    </p>
+
+    <div class="overflow-x-auto rounded-xl border border-border">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-border bg-bg-card">
+            <th class="px-6 py-4 font-medium text-text-muted">Feature</th>
+            <th class="px-6 py-4 font-medium text-accent">MemLayer</th>
+            <th class="px-6 py-4 font-medium text-text-muted">Vector DB</th>
+            <th class="px-6 py-4 font-medium text-text-muted">Plain RAG</th>
+          </tr>
+        </thead>
+        <tbody>
+          {features.map((feature, i) => (
+            <tr class:list={['border-b border-border', i % 2 === 0 ? 'bg-bg' : 'bg-bg-card']}>
+              <td class="px-6 py-3">{feature.name}</td>
+              <td class="px-6 py-3">{feature.memlayer ? '✓' : '—'}</td>
+              <td class="px-6 py-3 text-text-muted">{feature.vectorDb ? '✓' : '—'}</td>
+              <td class="px-6 py-3 text-text-muted">{feature.rag ? '✓' : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

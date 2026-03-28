@@ -1,0 +1,68 @@
+---
+title: "Semantic Layers"
+description: "Understanding MemLayer's 4-layer memory hierarchy"
+---
+
+## Why Layers Exist
+
+Semantic search works well for finding memories that are conceptually close to a query. But it struggles with certain kinds of recall. A query like "What programming concepts have I discussed?" may not surface a specific memory like "Discussed Rust's borrow checker in the Friday meeting" because the two are semantically distant.
+
+MemLayer solves this by organizing memories into a hierarchy of four semantic layers. Each memory is assigned a layer based on its level of abstraction, and memories at different layers are linked through parent-child relationships. This creates multiple paths to reach any given memory.
+
+## The Four Layers
+
+Layers are string values in the API, from most abstract to most specific:
+
+| Layer | What It Represents | Example |
+|------|--------------------|---------|
+| `"domain"` | Abstract categories of knowledge | "risk management" |
+| `"concept"` | Grouped, related knowledge within a domain | "financial instruments" |
+| `"fact"` | A specific, concrete piece of knowledge | "worked on instrument X at Acme Corp" |
+| `"episode"` | A time-bound event or interaction | "discussed instrument X in the Tuesday standup" |
+
+There is also a `"summary"` layer, which is orthogonal to the hierarchy -- summary nodes capture the essence of a concept or domain's children.
+
+## Hierarchy Example
+
+Memories form a tree structure through parent-child relationships:
+
+```
+"Programming" (Domain)
+  └── "Type Systems" (Concept)
+        ├── "Clojure has persistent data structures" (Fact)
+        │     └── "Explained persistent vectors to the team on Monday" (Episode)
+        └── "Rust has ownership types" (Fact)
+```
+
+A semantic search for "memory safety in systems programming" might directly match the Rust fact. From there, graph traversal discovers the parent concept "Type Systems", the sibling fact about Clojure, and the domain "Programming" -- providing richer context than semantic search alone.
+
+## How Layers Are Assigned
+
+When content enters MemLayer through the retain operation, an LLM classifies each extracted entity into a layer based on abstraction level:
+
+- **Domain**: Broad, categorical statements. Rarely from user input directly -- more often created by reflect.
+- **Concept**: Statements about a topic area that group multiple facts.
+- **Fact**: Concrete, specific knowledge. Most user-provided content falls here.
+- **Episode**: Events tied to a specific time or interaction.
+
+## How Layers Improve Recall
+
+The hierarchy enables three navigation patterns that pure semantic search cannot:
+
+**Navigate up**: From a specific fact, follow parent links to find the broader concept or domain.
+
+**Drill down**: From a domain or concept, follow child links to find specific facts and episodes.
+
+**Traverse sideways**: Through a shared parent, discover sibling memories. "Clojure's protocols" and "Rust's trait system" may not match each other in vector space, but they're both children of "Type Systems."
+
+## Filtering by Layer
+
+The recall endpoint supports a `layer` parameter to filter results:
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/recall \
+  -H "Content-Type: application/json" \
+  -d '{"query": "programming", "layer": "concept"}'
+```
+
+This returns only Concept-level memories, filtering out specific facts and episodes. Valid values: `"domain"`, `"concept"`, `"fact"`, `"episode"`.

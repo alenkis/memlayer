@@ -1,0 +1,45 @@
+---
+const benefits = [
+  {
+    title: 'Persistent Memory',
+    description: 'Your agents remember everything. Conversations, decisions, and context persist across sessions without manual state management.',
+    icon: '🧠',
+  },
+  {
+    title: 'Time-Travel Queries',
+    description: 'Track what your agents knew and when. Query any past state of the knowledge graph with as-of. Full change history for every memory.',
+    icon: '🕰️',
+  },
+  {
+    title: 'MCP + REST API',
+    description: 'Native Model Context Protocol support for seamless LLM integration. Full REST API for custom workflows and direct programmatic access.',
+    icon: '🔌',
+  },
+  {
+    title: 'Fully Managed',
+    description: 'No infrastructure to maintain. We handle scaling, uptime, and updates so your team can focus on building AI products.',
+    icon: '☁️',
+  },
+];
+---
+
+<section id="benefits" class="py-24">
+  <div class="mx-auto max-w-6xl px-6">
+    <h2 class="mb-4 text-center text-3xl font-bold md:text-4xl">
+      Why MemLayer?
+    </h2>
+    <p class="mx-auto mb-16 max-w-2xl text-center text-text-muted">
+      Give your AI agents the memory infrastructure they need to deliver real value.
+    </p>
+
+    <div class="grid gap-6 md:grid-cols-2">
+      {benefits.map(benefit => (
+        <div class="group rounded-xl border border-border bg-bg-card p-8 transition-colors hover:border-border-highlight hover:bg-bg-card-hover">
+          <div class="mb-4 text-3xl">{benefit.icon}</div>
+          <h3 class="mb-2 text-xl font-semibold">{benefit.title}</h3>
+          <p class="text-text-muted leading-relaxed">{benefit.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

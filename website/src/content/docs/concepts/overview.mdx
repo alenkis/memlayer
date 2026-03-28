@@ -1,0 +1,59 @@
+---
+title: "Overview"
+description: "What is MemLayer and why it exists"
+---
+
+## The Problem
+
+AI agents lose context between sessions. They cannot remember what a user told them last week, build up domain knowledge across conversations, or track how information changes over time.
+
+## The Solution
+
+MemLayer is a persistent memory system for AI agents. It provides a **knowledge graph** that agents can read from and write to through MCP or a REST API.
+
+When an agent stores a memory, MemLayer extracts structured facts, classifies them into semantic layers, connects them to existing knowledge, and tracks when each fact was recorded. When the agent recalls something, MemLayer combines vector similarity search with graph traversal to find relevant memories -- even ones that don't directly match the query.
+
+## Key Capabilities
+
+**Automatic extraction** -- When content is stored, an LLM breaks it into atomic facts and determines how each fact relates to existing knowledge.
+
+**Semantic search** -- Memories are embedded as vectors. Recall queries use cosine similarity to find conceptually related memories, not just keyword matches.
+
+**Temporal queries** -- Datahike tracks the full transaction history. The `as-of` parameter lets agents query what the knowledge graph looked like at any past point in time. See [Temporal Queries](/concepts/temporal-queries/).
+
+**Knowledge graph with semantic layers** -- Memories are organized in a four-layer hierarchy from abstract domains to specific episodes. This improves recall by providing multiple paths to find information. See [Semantic Layers](/concepts/semantic-layers/).
+
+**Per-agent memory namespaces** -- Each agent operates in isolation with its own knowledge graph. No cross-contamination between agents.
+
+## Four Operations
+
+| Operation | Purpose | Description |
+|-----------|---------|-------------|
+| **Retain** | Store | Ingest content with automatic extraction, deduplication, and relationship creation |
+| **Recall** | Search | Find relevant memories using semantic search, graph traversal, and temporal filtering |
+| **Reflect** | Organize | Analyze the knowledge graph to create missing layers, draw inferences, and restructure relationships |
+| **Forget** | Delete | Remove a memory from active queries so it no longer appears in recall results |
+
+## Architecture
+
+```
+                    ┌─────────────────┐
+                    │   AI Agent      │
+                    │  (MCP / REST)   │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  MemLayer API   │
+                    │   (Clojure)     │
+                    └──┬─────┬─────┬──┘
+                       │     │     │
+              ┌────────▼┐ ┌──▼───┐ ┌▼────────┐
+              │Datahike │ │Proxi-│ │ LLM APIs│
+              │(datalog │ │mum   │ │(OpenAI, │
+              │  DB)    │ │(vec) │ │ Groq)   │
+              └─────────┘ └──────┘ └─────────┘
+```
+
+- **Datahike** -- Embedded datalog database for memories, relationships, and graph structure.
+- **Proximum** -- Embedded vector database for semantic similarity search.
+- **LLM APIs** -- OpenAI for embedding generation, Groq for LLM inference (entity extraction, layer classification, decision-making).

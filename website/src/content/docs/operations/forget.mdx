@@ -1,0 +1,72 @@
+---
+title: "Forget"
+description: "Remove memories from the knowledge graph"
+---
+
+Forget removes a memory from active use. It will no longer appear in recall results or be accessible through standard queries. Datahike retracts the data -- this is a logical delete, not a physical one.
+
+For permanent deletion (GDPR compliance), use [evict](/api-reference/memories/#post-apiv1evict) instead.
+
+## Data Flow
+
+```
+POST /forget {memory-id}
+       │
+       ▼
+┌──────────────────────────────────┐
+│   DATAHIKE (Transaction)         │
+│  1. Retract memory               │
+│  2. Retract relationships         │
+│  All-or-nothing: COMMIT/ROLLBACK │
+└──────────────┬───────────────────┘
+               │
+       ┌───────┴───────┐
+       ▼               ▼
+ ForgetResponse   VECTOR STORE
+                  (remove embedding)
+```
+
+## What Gets Removed
+
+| Data | Recovery |
+|------|----------|
+| Memory | Datahike history (queryable via `as-of`) |
+| Relationships | Datahike history |
+| Embedding | Can be re-generated from history |
+
+## Guarantees
+
+| Property | Guarantee |
+|----------|-----------|
+| Atomicity | Datahike retractions are transactional (all-or-nothing) |
+| Idempotency | Forgetting a non-existent memory succeeds with 0 counts |
+| History | Memory is preserved in Datahike history, queryable via `as-of` |
+| Consistency | Memory will not appear in future recall results |
+
+## Edge Cases
+
+**Non-existent memory**: Returns success with `memories-removed: 0`. Intentionally idempotent.
+
+**Vector store failure**: Logged but doesn't fail the operation. Orphaned embeddings may exist temporarily. Datahike is the source of truth.
+
+## API
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/forget \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_key" \
+  -d '{"memory-id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}'
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `memory-id` | UUID string | Yes | The memory to forget |
+
+**Response:**
+
+```json
+{
+  "memories-removed": 1,
+  "relationships-removed": 2
+}
+```

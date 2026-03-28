@@ -1,0 +1,71 @@
+---
+title: "Recall"
+description: "Semantic search and memory retrieval"
+---
+
+Recall uses semantic search combined with graph traversal to find relevant memories.
+
+## Data Flow
+
+```
+Query Text
+    │
+    ▼
+[1. Generate Embedding]         → 1536-dim vector (OpenAI)
+    │
+    ▼
+[2. Vector Similarity Search]   → Proximum, returns (MemoryID, distance)
+    │
+    ▼
+[3. Fetch Full Memories]        → Datahike
+    │
+    ▼
+[4. Apply Filters]              → layer, namespace, as-of
+    │
+    ▼
+[5. Graph Expansion]            → ancestors, siblings, summaries, relationships
+    │
+    ▼
+[6. Graph Re-ranking]           → memories sharing parents get a proximity bonus
+    │
+    ▼
+[7. Generate Answer]            → LLM synthesizes answer from matched memories
+    │
+    ▼
+RecallResponse { query, answer, memories, count, usage }
+```
+
+## Request Parameters
+
+Recall is a `POST` endpoint with a JSON body:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | Yes | Natural language search query |
+| `namespace` | string | No | Filter by namespace |
+| `limit` | int | No | Maximum results (default: 10) |
+| `layer` | string | No | Filter by semantic layer (e.g., `"fact"`, `"concept"`) |
+| `as-of` | ISO 8601 | No | Query the database at a specific point in time |
+| `expand-graph` | bool | No | Include ancestors, summaries, siblings, and relationships |
+
+## Graph Expansion
+
+When `expand-graph` is true, each matched memory is enriched with its graph context:
+
+- **Ancestors**: Parent chain up to the domain level
+- **Summaries**: Summary nodes for the memory's parent
+- **Siblings**: Other children of the same parent
+- **Related**: Memories connected by explicit relationships
+
+Memories that share a parent with other matched memories receive a small distance bonus, surfacing clusters of related knowledge.
+
+## API
+
+```bash
+curl -X POST https://api.memlayer.dev/api/v1/recall \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mlk_your_key" \
+  -d '{"query": "programming language", "limit": 5, "expand-graph": true}'
+```
+
+Response includes ranked memories sorted by distance (lower = more similar), optional graph context, and an LLM-generated answer synthesized from the matched memories.

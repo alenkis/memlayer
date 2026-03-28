@@ -1,0 +1,113 @@
+name: Deploy API
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+        default: ''
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || '' }}
+          fetch-depth: 0
+
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          AWS_ACCESS_KEY_ID: op://MemLayer/AWSMemlayerDeploy/accessKeyId
+          AWS_SECRET_ACCESS_KEY: op://MemLayer/AWSMemlayerDeploy/secretAccessKey
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Discover infrastructure
+        id: infra
+        run: |
+          ECR_URL=$(aws ecr describe-repositories --repository-names memlayer \
+            --query 'repositories[0].repositoryUri' --output text)
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=memlayer" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          echo "ecr_url=$ECR_URL" >> "$GITHUB_OUTPUT"
+          echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "ECR: $ECR_URL"
+          echo "Instance: $INSTANCE_ID"
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        run: |
+          ECR_URL="${{ steps.infra.outputs.ecr_url }}"
+          GIT_VERSION=$(git describe --tags --always --match 'v*' 2>/dev/null || echo "dev")
+          GIT_SHA=$(git rev-parse --short HEAD)
+          docker build \
+            --build-arg GIT_VERSION="$GIT_VERSION" \
+            --build-arg GIT_SHA="$GIT_SHA" \
+            -t "$ECR_URL:latest" -t "$ECR_URL:${{ github.sha }}" .
+
+          # Tag with semver version when building at an exact tag
+          if [[ "$GIT_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            docker tag "$ECR_URL:latest" "$ECR_URL:$GIT_VERSION"
+          fi
+
+          docker push "$ECR_URL:latest"
+          docker push "$ECR_URL:${{ github.sha }}"
+          if [[ "$GIT_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            docker push "$ECR_URL:$GIT_VERSION"
+          fi
+
+      - name: Deploy to EC2 via SSM
+        run: |
+          INSTANCE_ID="${{ steps.infra.outputs.instance_id }}"
+          ECR_URL="${{ steps.infra.outputs.ecr_url }}"
+          GIT_VERSION=$(git describe --tags --always --match 'v*' 2>/dev/null || echo "latest")
+
+          if [[ "$GIT_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            DEPLOY_TAG="$GIT_VERSION"
+          else
+            DEPLOY_TAG="latest"
+          fi
+
+          # Pipe deploy.sh from the repo to the instance via SSM
+          SCRIPT_B64=$(base64 -w0 infra/deploy.sh)
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters commands=["echo $SCRIPT_B64 | base64 -d | bash -s -- $ECR_URL $DEPLOY_TAG"] \
+            --timeout-seconds 300 \
+            --query "Command.CommandId" \
+            --output text)
+          echo "SSM Command ID: $COMMAND_ID (deploying: $DEPLOY_TAG)"
+
+          # Wait for command to complete
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" || true
+
+          # Get command output
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "[Status, StandardOutputContent, StandardErrorContent]" \
+            --output text

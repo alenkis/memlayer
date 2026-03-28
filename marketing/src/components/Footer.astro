@@ -1,0 +1,57 @@
+---
+const docsUrl = 'https://docs.memlayer.dev';
+const githubUrl = 'https://github.com/alenkis/memlayer';
+
+const columns = [
+  {
+    title: 'Product',
+    links: [
+      { label: 'Documentation', href: docsUrl },
+      { label: 'API Reference', href: `${docsUrl}/api-reference/overview/` },
+      { label: 'MCP Integration', href: `${docsUrl}/mcp/setup/` },
+    ],
+  },
+  {
+    title: 'Resources',
+    links: [
+      { label: 'Getting Started', href: `${docsUrl}/getting-started/installation/` },
+      { label: 'Pricing', href: '#pricing' },
+      { label: 'GitHub', href: githubUrl },
+    ],
+  },
+];
+---
+
+<footer class="border-t border-border py-16">
+  <div class="mx-auto max-w-6xl px-6">
+    <div class="grid gap-12 md:grid-cols-3">
+      <div>
+        <div class="mb-4 text-xl font-bold">MemLayer</div>
+        <p class="text-sm text-text-muted leading-relaxed">
+          Persistent memory for AI agents. A knowledge graph with semantic search.
+        </p>
+      </div>
+
+      {columns.map(col => (
+        <div>
+          <h4 class="mb-4 text-sm font-semibold uppercase tracking-wider text-text-muted">
+            {col.title}
+          </h4>
+          <ul class="space-y-3">
+            {col.links.map(link => (
+              <li>
+                <a href={link.href} class="text-sm text-text-muted transition-colors hover:text-text">
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+
+    <div class="mt-12 border-t border-border pt-8 text-center text-sm text-text-muted">
+      &copy; {new Date().getFullYear()} MemLayer. All rights reserved.
+    </div>
+  </div>
+</footer>
