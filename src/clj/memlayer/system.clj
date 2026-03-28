@@ -124,7 +124,7 @@
 (defmethod ig/init-key :memlayer/router
   [_ {:keys [retain recall forget evict ingest batch-retain reflect
              ws-ingest admin namespaces memories stats dashboard
-             mcp retention-flow config db dynamodb]}]
+             mcp retention-flow config]}]
   (log/info "Creating router")
   (router/create-router {:retain         retain
                          :recall         recall
@@ -141,12 +141,7 @@
                          :dashboard      dashboard
                          :mcp            mcp
                          :retention-flow retention-flow
-                         :auth-config    (:auth config)
-                         :firebase       (:firebase config)
-                         :rate-limit     (:rate-limit config)
-                         :config         config
-                         :db             db
-                         :dynamodb       dynamodb}))
+                         :config         config}))
 
 ;; -- Server --
 
@@ -219,8 +214,6 @@
                      :dashboard      (ig/ref :handler/dashboard)
                      :mcp            (ig/ref :handler/mcp)
                      :retention-flow (ig/ref :memlayer/retention-flow)
-                     :db             (ig/ref :persistence/datahike)
-                     :dynamodb       (ig/ref :persistence/dynamodb)
                      :config         (ig/ref :memlayer/config)}
 
    :memlayer/server {:handler (ig/ref :memlayer/router)
@@ -287,8 +280,6 @@
                      :dashboard      (ig/ref :handler/dashboard)
                      :mcp            (ig/ref :handler/mcp)
                      :retention-flow (ig/ref :memlayer/retention-flow)
-                     :db             (ig/ref :persistence/datahike)
-                     :dynamodb       nil
                      :config         (ig/ref :memlayer/config)}
 
    :memlayer/local-server {:handler (ig/ref :memlayer/router)

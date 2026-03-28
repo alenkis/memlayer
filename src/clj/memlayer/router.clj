@@ -10,8 +10,6 @@
             [memlayer.json :as json]
             [memlayer.schema :as schema]
             [memlayer.api.health :as health]
-            [memlayer.middleware.firebase-auth :as firebase-auth]
-            [memlayer.middleware.rate-limit :as rate-limit]
             [memlayer.middleware.cors :as cors]
             [memlayer.middleware.trace :as trace]
             [memlayer.operations.flow.event-log :as event-log]))
@@ -66,41 +64,26 @@
        :body   {:processes   procs
                 :connections pipeline-connections}})))
 
+(defn- wrap-default-user-context
+  "Injects a default :user-context into every request.
+   Replaces auth middleware for local/self-hosted deployments."
+  [handler]
+  (fn [request]
+    (handler (assoc request :user-context {:user-id "local"
+                                           :email   nil
+                                           :name    "Local User"}))))
+
 (defn create-router
   "Create the reitit ring router with all routes and middleware.
-   Accepts pre-built handler fns and middleware config."
+   Accepts pre-built handler fns and config."
   [{:keys [;; Pre-built handler fns (from Integrant init-keys)
            retain recall forget ingest batch-retain reflect
            ws-ingest admin namespaces memories stats dashboard mcp
            ;; Pipeline status
            retention-flow
-           ;; Middleware config
-           auth-config firebase rate-limit db dynamodb
            ;; Full app config (for CORS port, etc.)
            config]}]
-  (let [firebase-pid   (get-in firebase [:project-id] "memlayer-c69b1")
-        e2e-mode?      (:e2e-mode auth-config)
-        ;; auth-enabled is an internal key for unit tests only (not in config schema).
-        ;; Production config omits it, defaulting to true (auth always on).
-        auth-enabled?  (:auth-enabled auth-config true)
-        dashboard-auth {:db                  db
-                        :firebase-project-id firebase-pid
-                        :e2e-mode?           e2e-mode?
-                        :auth-enabled?       auth-enabled?}
-        api-auth       {:db                  db
-                        :legacy-api-key-hash (:api-key-hash auth-config)
-                        :e2e-mode?           e2e-mode?
-                        :auth-enabled?       auth-enabled?}
-        rl-config      rate-limit
-        ddb            dynamodb
-        limiter        (rate-limit/create-limiter
-                        (cond-> {:max-requests (:max-requests rl-config 60)
-                                 :window-ms    (:window-ms rl-config 60000)}
-                          ddb (assoc :ddb-client  (:client ddb)
-                                     :table-name  (:table ddb))))
-        rl-mw          {:limiter  limiter
-                        :enabled? (and (:enabled rl-config true) (not e2e-mode?))}
-        pipeline-status (fn [_]
+  (let [pipeline-status (fn [_]
                           {:status 200
                            :body   {:running true}})
         pipeline-graph  (make-pipeline-graph-handler retention-flow)
@@ -115,17 +98,14 @@
        (ring/router
         [["/health" {:get {:handler health/handler}}]
 
-        ;; -- MCP route (X-API-Key auth, handler manages own serialization) --
-         ["/mcp" {:middleware [[firebase-auth/wrap-api-auth api-auth]]
-                  :post   {:handler (:post mcp)}
+         ["/mcp" {:post   {:handler (:post mcp)}
                   :delete {:handler (:delete mcp)}}]
 
          ;; -- WebSocket route (outside middleware to avoid body parsing) --
          ["/api/v1/ingest/stream" {:get {:handler ws-ingest}}]
 
-         ;; -- Memory API routes (X-API-Key auth) --
-         ["/api/v1" {:middleware [[firebase-auth/wrap-api-auth api-auth]
-                                  [rate-limit/wrap-rate-limit rl-mw]]}
+         ;; -- Memory API routes --
+         ["/api/v1" {:middleware [wrap-default-user-context]}
           ["/retain" {:post {:handler    retain
                              :parameters {:body [:map
                                                  [:content :string]
@@ -180,9 +160,8 @@
           ["/pipeline/graph" {:get {:handler pipeline-graph}}]
           ["/pipeline/operations" {:get {:handler pipeline-ops}}]]
 
-         ;; -- Account routes (Firebase JWT auth) --
-         ["/api/v1/account" {:middleware [[firebase-auth/wrap-dashboard-auth dashboard-auth]
-                                          [rate-limit/wrap-rate-limit rl-mw]]}
+         ;; -- Account routes --
+         ["/api/v1/account" {:middleware [wrap-default-user-context]}
           ["/me" {:get {:handler (:me dashboard)}}]
           ["/tokens" {:get  {:handler (:list-tokens dashboard)}
                       :post {:handler (:create-token dashboard)}}]

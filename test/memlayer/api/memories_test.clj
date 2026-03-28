@@ -19,9 +19,7 @@
                     :prompts            th/mock-prompts
                     :tuning             {}}
         flow       (th/start-test-flow! deps)]
-    {:app  (router/create-router (merge (th/make-test-handlers deps flow)
-                                        {:db conn :auth-config {:auth-enabled false}
-                                         :rate-limit {:enabled false}}))
+    {:app  (router/create-router (th/make-test-handlers deps flow))
      :flow flow
      :deps deps}))
 

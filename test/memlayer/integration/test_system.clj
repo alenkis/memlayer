@@ -40,10 +40,7 @@
   (let [base (config/load-config)]
     (-> base
         (assoc-in [:server :port] e2e-port)
-        (assoc :datahike {:backend :memory})
-        (assoc-in [:auth :e2e-mode] true)
-        (assoc-in [:auth :auth-enabled] false)
-        (assoc-in [:rate-limit :enabled] false))))
+        (assoc :datahike {:backend :memory}))))
 
 ;; Integrant methods that mirror system.clj but with e2e overrides
 
@@ -90,7 +87,7 @@
 (defmethod ig/init-key ::router
   [_ {:keys [retain recall forget evict ingest batch-retain reflect
              ws-ingest admin namespaces memories stats dashboard mcp
-             retention-flow config db dynamodb]}]
+             retention-flow config]}]
   (router/create-router {:retain         retain
                          :recall         recall
                          :forget         forget
@@ -106,12 +103,7 @@
                          :dashboard      dashboard
                          :mcp            mcp
                          :retention-flow retention-flow
-                         :auth-config    (:auth config)
-                         :firebase       (:firebase config)
-                         :rate-limit     (:rate-limit config)
-                         :config         config
-                         :db             db
-                         :dynamodb       dynamodb}))
+                         :config         config}))
 
 (defmethod ig/init-key ::server [_ {:keys [handler config]}]
   (let [port (get-in config [:server :port])]
@@ -178,7 +170,6 @@
              :dashboard      (ig/ref :handler/dashboard)
              :mcp            (ig/ref :handler/mcp)
              :retention-flow (ig/ref :memlayer/retention-flow)
-             :db             (ig/ref ::datahike)
              :config         (ig/ref ::config)}
 
    ::server {:handler (ig/ref ::router)
