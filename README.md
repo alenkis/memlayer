@@ -177,8 +177,6 @@ The native binary starts in milliseconds, needs no JVM, and bundles everything (
 | `bb uberjar` | Build distributable uberjar |
 | `bb local-server` | Run local mode (no auth, file-backed) |
 | `bb local-native-image` | Build GraalVM native binary |
-| `bb docker-build` | Build Docker image |
-| `bb ship` | Build, push, and deploy |
 | `bb tasks` | See all available tasks |
 
 ### Testing
@@ -195,18 +193,6 @@ bb test-integration
 
 # Playwright e2e (requires running server + .env)
 bb test-e2e
-```
-
-### Deployment
-
-Infrastructure is managed via Terraform on AWS (EC2, ECR, SSM).
-
-```bash
-bb infra-bootstrap   # One-time: create S3 + DynamoDB for state
-bb infra-init        # Initialize Terraform
-bb infra-plan        # Preview changes
-bb infra-apply       # Apply changes
-bb ship              # Build Docker, push to ECR, deploy to EC2
 ```
 
 ### Workflow

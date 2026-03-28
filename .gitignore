@@ -47,15 +47,6 @@ test-results/
 playwright-report/
 e2e-report.json
 
-# Terraform
-*.tfstate
-*.tfstate.*
-*.tfvars
-!*.tfvars.example
-.terraform/
-.terraform.lock.hcl
-infra/.env
-
 # Planning docs (local only)
 docs/plans/
 

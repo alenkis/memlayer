@@ -1,5 +1,5 @@
 (ns tasks
-  (:require [babashka.process :refer [shell process]]
+  (:require [babashka.process :refer [shell]]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -47,55 +47,6 @@
                     (and (.exists f)
                          (> (.lastModified f) target-mtime))))
                 deps)))))
-
-;; ---------------------------------------------------------------------------
-;; Terraform helpers
-;; ---------------------------------------------------------------------------
-
-(defn tf-output
-  "Capture a single terraform output value. Returns \"NOT_SET\" on failure."
-  [key]
-  (try
-    (-> (shell {:out :string :dir "infra"} "terraform" "output" "-raw" key)
-        :out
-        str/trim)
-    (catch Exception _e "NOT_SET")))
-
-(defn infra-env-shell!
-  "Run a command in the infra/ dir after injecting 1Password secrets."
-  [& cmd-parts]
-  (shell {:dir "infra"} "bash" "-c"
-         (str "op inject -f -i .env.1p -o .env && "
-              "set -a && . .env && set +a && "
-              (str/join " " cmd-parts))))
-
-;; ---------------------------------------------------------------------------
-;; Release
-;; ---------------------------------------------------------------------------
-
-(defn release!
-  "Create and push a version tag. Usage: bb release v0.4.0"
-  []
-  (let [version (first *command-line-args*)]
-    (when-not version
-      (println "Usage: bb release <version>  (e.g. bb release v0.4.0)")
-      (System/exit 1))
-    (when-not (re-matches #"v\d+\.\d+\.\d+" version)
-      (println "Error: VERSION must match vMAJOR.MINOR.PATCH (e.g., v0.4.0)")
-      (System/exit 1))
-    (when (zero? (:exit (shell {:continue true} "git" "rev-parse" version)))
-      (println (str "Error: tag " version " already exists"))
-      (System/exit 1))
-    (let [branch (-> (shell {:out :string} "git" "branch" "--show-current")
-                     :out str/trim)]
-      (when (not= branch "main")
-        (println (str "Error: releases must be created from main (currently on " branch ")"))
-        (System/exit 1)))
-    (println (str "Creating tag " version "..."))
-    (shell "git" "tag" "-a" version "-m" (str "Release " version))
-    (println (str "Pushing tag " version " to origin..."))
-    (shell "git" "push" "origin" version)
-    (println (str "Release " version " triggered."))))
 
 ;; ---------------------------------------------------------------------------
 ;; Env generation

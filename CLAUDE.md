@@ -27,7 +27,6 @@ bin/                 # Launcher script
 website/             # Documentation site (Astro)
 marketing/           # Marketing site (Astro)
 memlayer-plugin/     # Claude Code marketplace plugin
-infra/               # AWS infrastructure (Terraform: EC2, ECR, SSM)
 docs/                # Domain documentation
 allium/              # Behavioural specs (allium language)
 ```
@@ -41,8 +40,6 @@ allium/              # Behavioural specs (allium language)
 - **System lifecycle**: Integrant
 - **LLM providers**: OpenAI (embeddings), Groq (extraction/decisions)
 - **Build**: tools.build (uberjar), shadow-cljs (dashboard)
-- **Infrastructure**: AWS (EC2, ECR, SSM) via Terraform
-- **Domain**: `memlayer.dev` — API at `api.memlayer.dev`, dashboard at `app.memlayer.dev`
 
 ## Linear Tickets (Conductor Workspaces)
 
@@ -112,49 +109,6 @@ Both env vars are needed on both commands: the server uses `DASHBOARD_PORT` for 
 5. Cleans up server/dashboard processes and restores config files
 
 This is expensive (real LLM calls, real services) so only run `/test-full` when you believe the work is complete and ready to merge. Use `bb check` (unit-only) during development iterations.
-
-## Releasing
-
-Releases are controlled by git tags. Pushing a `v*` tag on `main` triggers the release pipeline (build + lint + unit tests → deploy API + dashboard + docs + marketing).
-
-E2e and integration tests live in a separate workflow (`e2e.yml`) and can be dispatched manually from the GitHub Actions UI at any time.
-
-**How to release:**
-
-1. Go to https://github.com/alenkis/memlayer/releases
-2. Click "Draft a new release"
-3. Choose a tag: type a new tag like `v0.4.0` (must target `main`)
-4. Click "Generate release notes" for an auto-generated changelog
-5. Publish the release
-
-This creates the tag and triggers the deploy pipeline automatically.
-
-**From the CLI** (alternative): `bb release v0.4.0` — validates format, prevents duplicates, enforces `main`, creates an annotated tag and pushes it.
-
-**Emergency deploy** (no version tag): Use the GitHub Actions UI → Release workflow → Run workflow. Deploys from `main` HEAD without creating a tag.
-
-**Rollback to a previous version:**
-
-Every release creates a tagged Docker image (e.g., `v0.3.1`). Two ways to rollback:
-
-1. **Via GitHub Actions** (recommended): Actions UI → Release workflow → Run workflow → enter the tag in the `version` field (e.g., `v0.3.1`). This checks out that tag and redeploys all services from it.
-
-2. **Via SSH/SSM** (API only, faster):
-```bash
-# Via SSH
-ssh ec2-user@<IP> 'sudo /usr/local/bin/memlayer-deploy v0.3.1'
-
-# Via AWS SSM
-aws ssm send-command --instance-ids <ID> \
-  --document-name AWS-RunShellScript \
-  --parameters commands=["/usr/local/bin/memlayer-deploy v0.3.1"]
-```
-
-To find available versions: `git tag --sort=-creatordate | head -10` or check [GitHub Releases](https://github.com/alenkis/memlayer/releases).
-
-**Check deployed version:** `curl https://api.memlayer.dev/health` returns `{version, git-sha, built-at}`.
-
-**Versioning scheme:** Semantic versioning — `vMAJOR.MINOR.PATCH`. Bump MAJOR for breaking API changes, MINOR for new features, PATCH for fixes.
 
 ## Naming Conventions
 

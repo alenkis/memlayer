@@ -121,12 +121,6 @@
    :task    (do (shell "npm" "run" "build:css")
                (shell "npx" "shadow-cljs" "-A:dashboard" "release" "dashboard"))}
 
-  dashboard-deploy
-  {:doc     "Build and deploy dashboard to Vercel (production)"
-   :depends [dashboard-build]
-   :task    (do (shell "npx" "vercel" "build" "--prod")
-               (shell "npx" "vercel" "deploy" "--prebuilt" "--prod"))}
-
   ;; ---- Build / Distribution ----
 
   uberjar
@@ -143,89 +137,6 @@
    :depends  [uberjar]
    :requires ([tasks :as t])
    :task     (t/dist!)}
-
-  ;; ---- Docker / Deploy ----
-
-  docker-build
-  {:doc  "Build Docker image"
-   :task (shell "docker" "build" "--platform" "linux/amd64" "-t" "memlayer:latest" ".")}
-
-  docker-push
-  {:doc      "Push Docker image to ECR"
-   :requires ([tasks :as t])
-   :task     (let [region  (or (System/getenv "AWS_REGION") "us-east-1")
-                   ecr-url (t/tf-output "ecr_repository_url")]
-               (shell "bash" "-c"
-                      (str "aws ecr get-login-password --region " region
-                           " | docker login --username AWS --password-stdin " ecr-url))
-               (shell "docker" "tag" "memlayer:latest" (str ecr-url ":latest"))
-               (shell "docker" "push" (str ecr-url ":latest")))}
-
-  deploy
-  {:doc      "SSH to EC2 and pull/restart container"
-   :requires ([tasks :as t])
-   :task     (let [ip (t/tf-output "instance_public_ip")]
-               (shell "ssh" (str "ec2-user@" ip) "sudo /usr/local/bin/memlayer-deploy"))}
-
-  ship
-  {:doc     "Build, push, and deploy in one step"
-   :depends [docker-build docker-push deploy]}
-
-  release
-  {:doc      "Create and push a version tag (bb release v0.4.0)"
-   :requires ([tasks :as t])
-   :task     (t/release!)}
-
-  ;; ---- Infrastructure ----
-
-  aws-configure
-  {:doc  "Configure AWS CLI with credentials from 1Password"
-   :task (let [region (or (System/getenv "AWS_REGION") "us-east-1")]
-           (shell "bash" "-c" "aws configure set aws_access_key_id \"$(op read 'op://MemLayer/AWSMemlayerDeploy/accessKeyId')\"")
-           (shell "bash" "-c" "aws configure set aws_secret_access_key \"$(op read 'op://MemLayer/AWSMemlayerDeploy/secretAccessKey')\"")
-           (shell "aws" "configure" "set" "region" region)
-           (println "AWS CLI configured. Verifying...")
-           (shell "aws" "sts" "get-caller-identity"))}
-
-  dynamodb-local
-  {:doc  "Start DynamoDB Local via Docker (port 8000)"
-   :task (shell "docker" "compose" "up" "-d" "dynamodb-local")}
-
-  dynamodb-stop
-  {:doc  "Stop DynamoDB Local"
-   :task (shell "docker" "compose" "down")}
-
-  infra-bootstrap
-  {:doc  "Create S3 + DynamoDB for Terraform state (run once)"
-   :task (shell "bash" "infra/bootstrap.sh")}
-
-  infra-init
-  {:doc  "Initialize Terraform"
-   :task (shell {:dir "infra"} "terraform" "init")}
-
-  infra-plan
-  {:doc      "Plan Terraform changes (secrets from 1Password)"
-   :requires ([tasks :as t])
-   :task     (t/infra-env-shell! "terraform plan")}
-
-  infra-apply
-  {:doc      "Apply Terraform changes (secrets from 1Password)"
-   :requires ([tasks :as t])
-   :task     (t/infra-env-shell! "terraform apply")}
-
-  infra-destroy
-  {:doc      "Destroy all Terraform-managed infrastructure (secrets from 1Password)"
-   :requires ([tasks :as t])
-   :task     (t/infra-env-shell! "terraform destroy")}
-
-  infra-output
-  {:doc  "Show Terraform outputs"
-   :task (shell {:dir "infra"} "terraform" "output")}
-
-  infra-url
-  {:doc      "Show the server URL"
-   :requires ([tasks :as t])
-   :task     (print (t/tf-output "app_url"))}
 
   ;; ---- Local Mode ----
 
