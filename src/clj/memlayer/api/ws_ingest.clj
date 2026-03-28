@@ -165,7 +165,8 @@
    Uses http-kit's async WebSocket support.
    Authentication is always required via API token."
   [flow deps]
-  (let [db (:db deps)]
+  (let [db             (:db deps)
+        auth-enabled?  (get-in deps [:auth-config :auth-enabled] true)]
     (fn [request]
       (let [conn-state (atom {:status          :awaiting-auth
                               :user-id         nil
@@ -202,18 +203,21 @@
                                 (case (:status @conn-state)
                                   :awaiting-auth
                                   (if (= "auth" (:type msg))
-                                    (if-let [user-ctx (validate-api-key db (:api-key msg))]
-                                      (do
-                                        (swap! conn-state assoc
-                                               :status :authenticated
-                                               :user-id (:user-id user-ctx))
-                                        (log/info "WebSocket authenticated for user:" (:user-id user-ctx))
-                                        (send! channel {:type "auth_ok"}))
-                                      (do
-                                        (log/warn "WebSocket authentication failed")
-                                        (send! channel {:type    "error"
-                                                        :message "authentication failed"})
-                                        (http/close channel)))
+                                    (let [user-ctx (if auth-enabled?
+                                                     (validate-api-key db (:api-key msg))
+                                                     {:user-id "local"})]
+                                      (if user-ctx
+                                        (do
+                                          (swap! conn-state assoc
+                                                 :status :authenticated
+                                                 :user-id (:user-id user-ctx))
+                                          (log/info "WebSocket authenticated for user:" (:user-id user-ctx))
+                                          (send! channel {:type "auth_ok"}))
+                                        (do
+                                          (log/warn "WebSocket authentication failed")
+                                          (send! channel {:type    "error"
+                                                          :message "authentication failed"})
+                                          (http/close channel))))
                                     (do
                                       (send! channel {:type    "error"
                                                       :message "authentication required"})

@@ -19,7 +19,7 @@
                  :on-failure      [:auth/server-config-failed]}}))
 
 ;; ---------------------------------------------------------------------------
-;; Firebase effects
+;; Firebase effects (cloud mode only)
 ;; ---------------------------------------------------------------------------
 
 (rf/reg-fx
@@ -42,16 +42,6 @@
    (-> (signOut firebase/auth)
        (.catch (fn [err] (js/console.error "Sign-out error:" err))))))
 
-(rf/reg-fx
- :firebase/get-id-token
- (fn [{:keys [on-success]}]
-   (let [user (.-currentUser firebase/auth)]
-     (when user
-       (-> (.getIdToken user)
-           (.then (fn [token]
-                    (rf/dispatch (conj on-success token))))
-           (.catch (fn [err] (js/console.error "getIdToken error:" err))))))))
-
 ;; ---------------------------------------------------------------------------
 ;; Events
 ;; ---------------------------------------------------------------------------
@@ -70,8 +60,7 @@
      ;; Local mode — skip Firebase, auto-authenticate
      {:db (-> db
               (assoc-in [:auth :user] {:uid "local" :email nil :display-name "Local User"})
-              (assoc-in [:auth :loading?] false)
-              (assoc-in [:auth :active-api-key] "local"))
+              (assoc-in [:auth :loading?] false))
       :dispatch-n [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
                    [:fetch-namespaces] [:fetch-pipeline-status]]})))
 
@@ -91,12 +80,11 @@
                                        :display-name (.-displayName user)
                                        :photo-url    (.-photoURL user)})
               (assoc-in [:auth :loading?] false))
-      :firebase/get-id-token {:on-success [:auth/token-received]}}
+      :dispatch-n [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
+                   [:fetch-namespaces] [:fetch-pipeline-status]]}
      {:db (-> db
               (assoc-in [:auth :user] nil)
-              (assoc-in [:auth :loading?] false)
-              (assoc-in [:auth :id-token] nil)
-              (assoc-in [:auth :active-api-key] nil))})))
+              (assoc-in [:auth :loading?] false))})))
 
 (rf/reg-event-fx
  :auth/sign-in
@@ -106,78 +94,8 @@
 (rf/reg-event-fx
  :auth/sign-out
  (fn [{:keys [db]} _]
-   {:db (-> db
-            (assoc-in [:auth :user] nil)
-            (assoc-in [:auth :id-token] nil)
-            (assoc-in [:auth :active-api-key] nil))
+   {:db (assoc-in db [:auth :user] nil)
     :firebase/sign-out true}))
-
-(rf/reg-event-fx
- :auth/token-received
- (fn [{:keys [db]} [_ token]]
-   {:db (assoc-in db [:auth :id-token] token)
-    :dispatch [:auth/fetch-active-token]}))
-
-(rf/reg-event-fx
- :auth/fetch-active-token
- (fn [{:keys [db]} _]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:http-xhrio {:method          :get
-                     :uri             (config/api-url "/account/active-token")
-                     :headers         {"Authorization" (str "Bearer " id-token)}
-                     :response-format (ajax/json-response-format {:keywords? true})
-                     :on-success      [:auth/active-token-success]
-                     :on-failure      [:auth/active-token-failure]}}))))
-
-(rf/reg-event-fx
- :auth/active-token-success
- (fn [{:keys [db]} [_ result]]
-   (if (:token result)
-     {:db         (assoc-in db [:auth :active-api-key] (:token result))
-      :dispatch-n [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
-                   [:fetch-namespaces] [:fetch-pipeline-status]]}
-     ;; No token exists — auto-create a default one
-     {:dispatch [:auth/auto-create-token]})))
-
-(rf/reg-event-fx
- :auth/auto-create-token
- (fn [{:keys [db]} _]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:http-xhrio {:method          :post
-                     :uri             (config/api-url "/account/tokens")
-                     :headers         {"Authorization" (str "Bearer " id-token)}
-                     :params          {:name "default"}
-                     :format          (ajax/json-request-format)
-                     :response-format (ajax/json-response-format {:keywords? true})
-                     :on-success      [:auth/auto-create-token-success]
-                     :on-failure      [:auth/auto-create-token-failure]}}))))
-
-(rf/reg-event-fx
- :auth/auto-create-token-success
- (fn [{:keys [db]} [_ result]]
-   {:db         (assoc-in db [:auth :active-api-key] (:token result))
-    :dispatch-n [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
-                 [:fetch-namespaces] [:fetch-pipeline-status]]}))
-
-(rf/reg-event-db
- :auth/auto-create-token-failure
- (fn [db [_ error]]
-   (js/console.error "Failed to auto-create API token:" (clj->js error))
-   (assoc-in db [:auth :api-key-error] "Failed to create API token. Please try again.")))
-
-(rf/reg-event-db
- :auth/active-token-failure
- (fn [db [_ error]]
-   (js/console.error "Failed to fetch active token:" (clj->js error))
-   (assoc-in db [:auth :api-key-error] "Failed to fetch API token. Please try again.")))
-
-(rf/reg-event-fx
- :auth/retry-api-key
- (fn [{:keys [db]} _]
-   {:db       (update db :auth dissoc :api-key-error)
-    :dispatch [:auth/fetch-active-token]}))
 
 ;; ---------------------------------------------------------------------------
 ;; Subscriptions
@@ -188,6 +106,3 @@
 (rf/reg-sub :auth/authenticated?
             :<- [:auth/user]
             (fn [user _] (some? user)))
-(rf/reg-sub :auth/id-token (fn [db _] (get-in db [:auth :id-token])))
-(rf/reg-sub :auth/active-api-key (fn [db _] (get-in db [:auth :active-api-key])))
-(rf/reg-sub :auth/api-key-error (fn [db _] (get-in db [:auth :api-key-error])))

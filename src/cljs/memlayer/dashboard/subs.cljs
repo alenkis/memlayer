@@ -74,15 +74,9 @@
 (rf/reg-sub :namespaces/delete-target (fn [db _] (get-in db [:namespaces :delete-target])))
 (rf/reg-sub :namespaces/rename-target (fn [db _] (get-in db [:namespaces :rename-target])))
 
-;; -- Tokens --
-
-(rf/reg-sub :tokens (fn [db _] (:tokens db)))
-(rf/reg-sub :tokens/new-token (fn [db _] (get-in db [:tokens :new-token])))
-
 ;; -- Settings --
 
 (rf/reg-sub :settings (fn [db _] (:settings db)))
-(rf/reg-sub :settings/active-tab (fn [db _] (get-in db [:settings :active-tab] :general)))
 (rf/reg-sub :settings/keys-form (fn [db _] (get-in db [:settings :keys-form])))
 
 ;; -- Usage --

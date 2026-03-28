@@ -38,45 +38,32 @@
 
 (defn- show-onboarding?
   "Returns true when onboarding card should be visible.
-   Replicates: (or (nil? api-key) (zero? global-total))"
+   Replicates: (zero? global-total)"
   [db]
-  (let [api-key      (get-in db [:auth :active-api-key])
-        global-total (get-in db [:memory-stats :data :global-total] 0)]
-    (or (nil? api-key) (zero? global-total))))
+  (let [global-total (get-in db [:memory-stats :data :global-total] 0)]
+    (zero? global-total)))
 
 ;; ---------------------------------------------------------------------------
 ;; Onboarding visibility
 ;; ---------------------------------------------------------------------------
 
 (deftest onboarding-shows-with-default-db
-  (testing "onboarding visible with default db (no api-key, no memories)"
-    (is (nil? (get-in db/default-db [:auth :active-api-key])))
+  (testing "onboarding visible with default db (no memories)"
     (is (true? (show-onboarding? db/default-db)))))
 
-(deftest onboarding-shows-when-api-key-nil
-  (testing "onboarding visible when api-key is nil regardless of stats"
-    (let [db (assoc db/default-db :memory-stats {:data api-stats-response :loading? false :error nil})]
-      (is (true? (show-onboarding? db))))))
-
 (deftest onboarding-shows-when-zero-memories
-  (testing "onboarding visible with api-key but zero memories"
-    (let [db (-> db/default-db
-                 (assoc-in [:auth :active-api-key] "mlk_test123")
-                 (assoc :memory-stats {:data api-stats-empty :loading? false :error nil}))]
+  (testing "onboarding visible with zero memories"
+    (let [db (assoc db/default-db :memory-stats {:data api-stats-empty :loading? false :error nil})]
       (is (true? (show-onboarding? db))))))
 
 (deftest onboarding-hides-when-memories-exist
-  (testing "onboarding hidden when api-key present and global-total > 0"
-    (let [db (-> db/default-db
-                 (assoc-in [:auth :active-api-key] "mlk_test123")
-                 (assoc :memory-stats {:data api-stats-response :loading? false :error nil}))]
+  (testing "onboarding hidden when global-total > 0"
+    (let [db (assoc db/default-db :memory-stats {:data api-stats-response :loading? false :error nil})]
       (is (false? (show-onboarding? db))))))
 
 (deftest onboarding-hides-with-one-memory
   (testing "onboarding hidden as soon as global-total reaches 1"
-    (let [db (-> db/default-db
-                 (assoc-in [:auth :active-api-key] "mlk_test123")
-                 (assoc :memory-stats {:data api-stats-one-memory :loading? false :error nil}))]
+    (let [db (assoc db/default-db :memory-stats {:data api-stats-one-memory :loading? false :error nil})]
       (is (false? (show-onboarding? db))))))
 
 ;; ---------------------------------------------------------------------------
@@ -93,47 +80,10 @@
 
 (deftest retain-success-dispatches-fetch-memory-stats
   (testing ":retain-success returns :dispatch [:fetch-memory-stats]"
-    (let [cofx   {:db (assoc-in db/default-db [:auth :active-api-key] "mlk_test")}
+    (let [cofx   {:db db/default-db}
           result (retain-success-handler cofx [:retain-success {:id "mem-1"}])]
       (is (= [:fetch-memory-stats] (:dispatch result)))
       (is (= false (get-in (:db result) [:playground :retain :loading?]))))))
-
-;; active-token-success handler logic
-(defn- active-token-success-handler [{:keys [db]} [_ result]]
-  (if (:token result)
-    {:db         (assoc-in db [:auth :active-api-key] (:token result))
-     :dispatch-n [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
-                  [:fetch-namespaces] [:fetch-pipeline-status]]}
-    {:dispatch [:auth/auto-create-token]}))
-
-(deftest active-token-success-with-token-dispatches-stats
-  (testing ":auth/active-token-success with token sets key and dispatches stats + namespaces"
-    (let [result (active-token-success-handler {:db db/default-db}
-                                               [:auth/active-token-success {:token "mlk_abc"}])]
-      (is (= "mlk_abc" (get-in (:db result) [:auth :active-api-key])))
-      (is (= [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
-              [:fetch-namespaces] [:fetch-pipeline-status]] (:dispatch-n result))))))
-
-(deftest active-token-success-without-token-dispatches-auto-create
-  (testing ":auth/active-token-success without token dispatches auto-create"
-    (let [result (active-token-success-handler {:db db/default-db}
-                                               [:auth/active-token-success {}])]
-      (is (nil? (:db result)) "should not set db when no token")
-      (is (= [:auth/auto-create-token] (:dispatch result))))))
-
-;; auto-create-token-success handler logic
-(defn- auto-create-token-success-handler [{:keys [db]} [_ result]]
-  {:db         (assoc-in db [:auth :active-api-key] (:token result))
-   :dispatch-n [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
-                [:fetch-namespaces] [:fetch-pipeline-status]]})
-
-(deftest auto-create-token-success-dispatches-stats
-  (testing ":auth/auto-create-token-success sets key and dispatches stats + namespaces"
-    (let [result (auto-create-token-success-handler {:db db/default-db}
-                                                    [:auth/auto-create-token-success {:token "mlk_new"}])]
-      (is (= "mlk_new" (get-in (:db result) [:auth :active-api-key])))
-      (is (= [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
-              [:fetch-namespaces] [:fetch-pipeline-status]] (:dispatch-n result))))))
 
 ;; fetch-memory-stats-success handler logic
 (defn- fetch-memory-stats-success-handler [db [_ result]]
@@ -150,27 +100,10 @@
 ;; Full flow (pure)
 ;; ---------------------------------------------------------------------------
 
-(deftest full-flow-token-then-stats-hides-onboarding
-  (testing "token arrives → stats success → onboarding hides"
-    (let [token-effects (active-token-success-handler
-                         {:db db/default-db}
-                         [:auth/active-token-success {:token "mlk_real"}])
-          db-after-token (:db token-effects)]
-      (is (= [[:fetch-memory-stats] [:fetch-memories] [:fetch-graph-data]
-              [:fetch-namespaces] [:fetch-pipeline-status]] (:dispatch-n token-effects)))
-      (is (true? (show-onboarding? db-after-token)) "still onboarding before stats")
-
-      (let [db-after-stats (fetch-memory-stats-success-handler
-                            db-after-token
-                            [:fetch-memory-stats-success api-stats-response])]
-        (is (false? (show-onboarding? db-after-stats))
-            "onboarding hides after stats arrive with total > 0")))))
-
 (deftest full-flow-retain-then-stats-hides-onboarding
   (testing "retain success → stats refetch → onboarding hides"
-    (let [db-with-key (assoc-in db/default-db [:auth :active-api-key] "mlk_test")
-          retain-effects (retain-success-handler
-                          {:db db-with-key}
+    (let [retain-effects (retain-success-handler
+                          {:db db/default-db}
                           [:retain-success {:id "mem-1"}])]
       (is (= [:fetch-memory-stats] (:dispatch retain-effects)))
 

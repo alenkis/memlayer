@@ -1,8 +1,7 @@
 (ns memlayer.dashboard.views.settings
   (:require [re-frame.core :as rf]
             [reagent.core :as r]
-            [memlayer.dashboard.components.ui :as ui]
-            [memlayer.dashboard.views.tokens :as tokens]))
+            [memlayer.dashboard.components.ui :as ui]))
 
 (defn general-tab []
   (let [groq-key  (r/atom "")
@@ -80,26 +79,11 @@
                           :variant  :danger}
                "Remove All Keys"]]]]])))))
 
-(defn settings-tabs []
-  (let [active-tab @(rf/subscribe [:settings/active-tab])]
-    [:div {:class "flex gap-2 mb-6" :role "tablist" :aria-label "Settings sections"}
-     [ui/button {:variant  (if (= active-tab :general) :primary :ghost)
-                 :on-click #(rf/dispatch [:settings/set-tab :general])}
-      "General"]
-     [ui/button {:variant  (if (= active-tab :tokens) :primary :ghost)
-                 :on-click #(rf/dispatch [:settings/set-tab :tokens])}
-      "API Tokens"]]))
-
 (defn page []
   (rf/dispatch [:settings/fetch])
   (fn []
-    (let [active-tab @(rf/subscribe [:settings/active-tab])]
-      [:div {:class "space-y-6"}
-       [:div
-        [:h2 {:class "text-2xl font-bold text-gray-900 dark:text-gray-100"} "Settings"]
-        [:p {:class "text-gray-500 dark:text-gray-400 mt-1"} "Manage your profile, keys, and API tokens"]]
-       [settings-tabs]
-       [:div {:role "tabpanel"}
-        (case active-tab
-          :tokens  [tokens/page]
-          [general-tab])]])))
+    [:div {:class "space-y-6"}
+     [:div
+      [:h2 {:class "text-2xl font-bold text-gray-900 dark:text-gray-100"} "Settings"]
+      [:p {:class "text-gray-500 dark:text-gray-400 mt-1"} "Manage your profile and LLM provider keys"]]
+     [general-tab]]))

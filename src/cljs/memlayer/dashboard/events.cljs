@@ -56,11 +56,9 @@
 (rf/reg-event-fx
  :fetch-pipeline-status
  (fn [{:keys [db]} _]
-   (let [api-key (get-in db [:auth :active-api-key])]
-     (when api-key
-       {:http-xhrio (fx/api-get "/pipeline/status" api-key
-                                [:fetch-pipeline-status-success]
-                                [:fetch-pipeline-status-failure])}))))
+   {:http-xhrio (fx/api-get "/pipeline/status"
+                            [:fetch-pipeline-status-success]
+                            [:fetch-pipeline-status-failure])}))
 
 (rf/reg-event-db
  :fetch-pipeline-status-success
@@ -77,11 +75,10 @@
 (rf/reg-event-fx
  :fetch-memory-stats
  (fn [{:keys [db]} _]
-   (let [api-key   (get-in db [:auth :active-api-key])
-         namespace (:active-namespace db)
+   (let [namespace (:active-namespace db)
          path      (str "/stats/memories?namespace=" (or namespace "default"))]
      {:db         (assoc-in db [:memory-stats :loading?] true)
-      :http-xhrio (fx/api-get path api-key
+      :http-xhrio (fx/api-get path
                               [:fetch-memory-stats-success]
                               [:fetch-memory-stats-failure])})))
 
@@ -98,11 +95,10 @@
 (rf/reg-event-fx
  :fetch-consistency
  (fn [{:keys [db]} _]
-   (let [api-key (get-in db [:auth :active-api-key])]
-     {:db         (assoc-in db [:consistency :loading?] true)
-      :http-xhrio (fx/api-get "/stats/consistency" api-key
-                              [:fetch-consistency-success]
-                              [:fetch-consistency-failure])})))
+   {:db         (assoc-in db [:consistency :loading?] true)
+    :http-xhrio (fx/api-get "/stats/consistency"
+                            [:fetch-consistency-success]
+                            [:fetch-consistency-failure])}))
 
 (rf/reg-event-db
  :fetch-consistency-success
@@ -119,8 +115,7 @@
 (rf/reg-event-fx
  :fetch-memories
  (fn [{:keys [db]} _]
-   (let [api-key   (get-in db [:auth :active-api-key])
-         params    (get-in db [:memories :params])
+   (let [params    (get-in db [:memories :params])
          namespace (or (:active-namespace db) "default")
          query-str (str "/memories?"
                         "namespace=" namespace "&"
@@ -128,7 +123,7 @@
                         "limit=" (:limit params 20)
                         "&offset=" (:offset params 0))]
      {:db         (assoc-in db [:memories :loading?] true)
-      :http-xhrio (fx/api-get query-str api-key
+      :http-xhrio (fx/api-get query-str
                               [:fetch-memories-success]
                               [:fetch-memories-failure])})))
 
@@ -157,11 +152,10 @@
 
 (rf/reg-event-fx
  :fetch-memory
- (fn [{:keys [db]} [_ id]]
-   (let [api-key (get-in db [:auth :active-api-key])]
-     {:http-xhrio (fx/api-get (str "/memories/" id) api-key
-                              [:fetch-memory-success]
-                              [:fetch-memory-failure])})))
+ (fn [_ [_ id]]
+   {:http-xhrio (fx/api-get (str "/memories/" id)
+                            [:fetch-memory-success]
+                            [:fetch-memory-failure])}))
 
 (rf/reg-event-db
  :fetch-memory-success
@@ -182,13 +176,11 @@
 
 (rf/reg-event-fx
  :fetch-memory-relationships
- (fn [{:keys [db]} [_ id]]
-   (let [api-key (get-in db [:auth :active-api-key])]
-     {:http-xhrio (fx/api-post "/relationships"
-                               {:memory-ids [id]}
-                               api-key
-                               [:fetch-memory-relationships-success]
-                               [:fetch-memory-relationships-failure])})))
+ (fn [_ [_ id]]
+   {:http-xhrio (fx/api-post "/relationships"
+                             {:memory-ids [id]}
+                             [:fetch-memory-relationships-success]
+                             [:fetch-memory-relationships-failure])}))
 
 (rf/reg-event-db
  :fetch-memory-relationships-success
@@ -205,11 +197,10 @@
 (rf/reg-event-fx
  :fetch-graph-data
  (fn [{:keys [db]} _]
-   (let [api-key   (get-in db [:auth :active-api-key])
-         namespace (or (:active-namespace db) "default")
+   (let [namespace (or (:active-namespace db) "default")
          path      (str "/memories?namespace=" namespace "&limit=200")]
      {:db (assoc-in db [:graph :loading?] true)
-      :http-xhrio (fx/api-get path api-key
+      :http-xhrio (fx/api-get path
                               [:fetch-graph-data-success]
                               [:fetch-graph-data-failure])})))
 
@@ -232,13 +223,11 @@
 
 (rf/reg-event-fx
  :fetch-graph-relationships
- (fn [{:keys [db]} [_ memory-ids]]
-   (let [api-key (get-in db [:auth :active-api-key])]
-     {:http-xhrio (fx/api-post "/relationships"
-                               {:memory-ids memory-ids}
-                               api-key
-                               [:fetch-graph-relationships-success]
-                               [:fetch-graph-relationships-failure])})))
+ (fn [_ [_ memory-ids]]
+   {:http-xhrio (fx/api-post "/relationships"
+                             {:memory-ids memory-ids}
+                             [:fetch-graph-relationships-success]
+                             [:fetch-graph-relationships-failure])}))
 
 (rf/reg-event-db
  :fetch-graph-relationships-success
@@ -310,11 +299,8 @@
 (rf/reg-event-fx
  :graph/recall!
  (fn [{:keys [db]} _]
-   (let [api-key    (get-in db [:auth :active-api-key])
-         query      (get-in db [:graph :recall :query])
-         namespace  (let [ns (:active-namespace db)]
-                      ns)
-         ;; Use graph size as limit so activation covers the full graph
+   (let [query      (get-in db [:graph :recall :query])
+         namespace  (:active-namespace db)
          graph-size (count (get-in db [:graph :memories]))]
      (when (seq query)
        {:db         (-> db
@@ -325,7 +311,6 @@
                                   :namespace    namespace
                                   :expand-graph true
                                   :limit        (max 10 graph-size)}
-                                 api-key
                                  [:graph/recall-success]
                                  [:graph/recall-failure])}))))
 
@@ -353,13 +338,11 @@
 (rf/reg-event-fx
  :reflect!
  (fn [{:keys [db]} [_ since]]
-   (let [api-key   (get-in db [:auth :active-api-key])
-         namespace (:active-namespace db)]
+   (let [namespace (:active-namespace db)]
      {:db         (assoc db :reflect-loading? true)
       :http-xhrio (fx/api-post "/reflect"
                                (cond-> {:namespace (or namespace "default")}
                                  since (assoc :since since))
-                               api-key
                                [:reflect-success]
                                [:reflect-failure])})))
 
@@ -382,7 +365,6 @@
    (when (= field :content)
      (reset! file-ref nil))
    (cond-> (assoc-in db [:playground :retain :request field] value)
-     ;; Typing content clears file selection (mutual exclusivity)
      (= field :content) (assoc-in [:playground :file-upload :status] :open)
      (= field :content) (assoc-in [:playground :file-upload :file-name] nil)
      (= field :content) (assoc-in [:playground :file-upload :file-size] nil))))
@@ -390,8 +372,7 @@
 (rf/reg-event-fx
  :retain!
  (fn [{:keys [db]} _]
-   (let [api-key   (get-in db [:auth :active-api-key])
-         request   (get-in db [:playground :retain :request])
+   (let [request   (get-in db [:playground :retain :request])
          namespace (:active-namespace db)
          request   (assoc request :namespace namespace)]
      {:db         (-> db
@@ -399,7 +380,6 @@
                       (assoc-in [:playground :retain :error] nil))
       :http-xhrio (fx/api-post "/retain"
                                request
-                               api-key
                                [:retain-success]
                                [:retain-failure])})))
 
@@ -430,8 +410,7 @@
 (rf/reg-event-fx
  :recall!
  (fn [{:keys [db]} _]
-   (let [api-key   (get-in db [:auth :active-api-key])
-         params    (get-in db [:playground :recall :params])
+   (let [params    (get-in db [:playground :recall :params])
          namespace (:active-namespace db)
          params    (assoc params :namespace namespace)]
      {:db         (-> db
@@ -439,7 +418,6 @@
                       (assoc-in [:playground :recall :error] nil))
       :http-xhrio (fx/api-post "/recall"
                                params
-                               api-key
                                [:recall-success]
                                [:recall-failure])})))
 
@@ -466,8 +444,6 @@
 ;; -- Playground: File Upload --
 ;; State machine: :closed → :open → :selected → :uploading → :processing → :complete
 ;;                                                         ↘ :error
-;; File content is never stored in app-db. The JS File object is held in
-;; file-ref atom (defined at top of file) and streamed over WebSocket.
 
 (rf/reg-event-db
  :file-upload/toggle
@@ -507,12 +483,10 @@
   (-> (.read reader)
       (.then (fn [result]
                (if (.-done result)
-                 ;; Flush decoder and send done
                  (let [remaining (.decode decoder)]
                    (when (pos? (.-length remaining))
                      (send-edn! ws {:type "content" :data remaining}))
                    (send-edn! ws {:type "done"}))
-                 ;; Send decoded chunk, wait for ack to continue
                  (let [text (.decode decoder (.-value result) #js {:stream true})]
                    (send-edn! ws {:type "content" :data text})))))
       (.catch (fn [err]
@@ -520,7 +494,7 @@
 
 (rf/reg-fx
  :ws-ingest
- (fn [{:keys [file source namespace api-key]}]
+ (fn [{:keys [file source namespace]}]
    (let [url     (str config/api-ws-base "/ingest/stream")
          ws      (js/WebSocket. url)
          reader  (atom nil)
@@ -529,9 +503,9 @@
            (fn [e]
              (let [msg (reader/read-string (.-data e))]
                (case (:type msg)
-                 ;; Phase 1: connected -> send auth
+                 ;; Phase 1: connected -> send auth (empty for local mode)
                  "connected"
-                 (send-edn! ws {:type "auth" :api-key api-key})
+                 (send-edn! ws {:type "auth" :api-key "local"})
 
                  ;; Phase 2: auth ok -> send metadata
                  "auth_ok"
@@ -566,23 +540,16 @@
 (rf/reg-event-fx
  :file-upload/ingest!
  (fn [{:keys [db]} _]
-   (let [retain  (get-in db [:playground :retain :request])
-         api-key (get-in db [:auth :active-api-key])
-         file    @file-ref]
-     (if (nil? api-key)
-       {:db (assoc-in db [:playground :file-upload :error]
-                      "No API key available. Create a token in Settings first.")
-        :dispatch [:auth/fetch-active-token]}
-       {:db        (-> db
-                       (assoc-in [:playground :file-upload :status] :uploading)
-                       (assoc-in [:playground :file-upload :percentage] 0)
-                       (assoc-in [:playground :file-upload :result] nil)
-                       (assoc-in [:playground :file-upload :error] nil))
-        :ws-ingest {:file      file
-                    :source    (or (:source retain) "file-upload")
-                    :namespace (let [ns (:active-namespace db)]
-                                 ns)
-                    :api-key   api-key}}))))
+   (let [retain (get-in db [:playground :retain :request])
+         file   @file-ref]
+     {:db        (-> db
+                     (assoc-in [:playground :file-upload :status] :uploading)
+                     (assoc-in [:playground :file-upload :percentage] 0)
+                     (assoc-in [:playground :file-upload :result] nil)
+                     (assoc-in [:playground :file-upload :error] nil))
+      :ws-ingest {:file      file
+                  :source    (or (:source retain) "file-upload")
+                  :namespace (:active-namespace db)}})))
 
 (rf/reg-event-db
  :file-upload/progress
@@ -620,12 +587,10 @@
 (rf/reg-event-fx
  :fetch-namespaces
  (fn [{:keys [db]} _]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:db         (assoc-in db [:namespaces :loading?] true)
-        :http-xhrio (fx/dashboard-get "/namespaces" id-token
-                                      [:fetch-namespaces-success]
-                                      [:fetch-namespaces-failure])}))))
+   {:db         (assoc-in db [:namespaces :loading?] true)
+    :http-xhrio (fx/api-get "/account/namespaces"
+                            [:fetch-namespaces-success]
+                            [:fetch-namespaces-failure])}))
 
 (rf/reg-event-db
  :fetch-namespaces-success
@@ -663,99 +628,16 @@
                         [:fetch-consistency]]}))
 
 ;; ============================================================================
-;; Token events
-;; ============================================================================
-
-(rf/reg-event-fx
- :tokens/fetch
- (fn [{:keys [db]} _]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:db         (assoc-in db [:tokens :loading?] true)
-        :http-xhrio (fx/dashboard-get "/tokens" id-token
-                                      [:tokens/fetch-success]
-                                      [:tokens/fetch-failure])}))))
-
-(rf/reg-event-db
- :tokens/fetch-success
- (fn [db [_ result]]
-   (-> db
-       (assoc-in [:tokens :items] (:tokens result))
-       (assoc-in [:tokens :loading?] false)
-       (assoc-in [:tokens :error] nil))))
-
-(rf/reg-event-db
- :tokens/fetch-failure
- (fn [db [_ error]]
-   (-> db
-       (assoc-in [:tokens :loading?] false)
-       (assoc-in [:tokens :error] error))))
-
-(rf/reg-event-fx
- :tokens/create
- (fn [{:keys [db]} [_ token-name]]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:http-xhrio (fx/dashboard-post "/tokens" {:name token-name} id-token
-                                       [:tokens/create-success]
-                                       [:tokens/create-failure])}))))
-
-(rf/reg-event-fx
- :tokens/create-success
- (fn [{:keys [db]} [_ result]]
-   {:db (-> db
-            (assoc-in [:tokens :new-token] result)
-            (update-in [:tokens :items] (fn [items] (conj (or items []) result))))
-    :dispatch [:auth/fetch-active-token]}))
-
-(rf/reg-event-db
- :tokens/create-failure
- (fn [db [_ error]]
-   (assoc-in db [:tokens :error] error)))
-
-(rf/reg-event-fx
- :tokens/revoke
- (fn [{:keys [db]} [_ token-id]]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:http-xhrio (fx/dashboard-delete (str "/tokens/" token-id) id-token
-                                         [:tokens/revoke-success token-id]
-                                         [:tokens/revoke-failure])}))))
-
-(rf/reg-event-db
- :tokens/revoke-success
- (fn [db [_ token-id _result]]
-   (update-in db [:tokens :items]
-              (fn [items]
-                (mapv (fn [t]
-                        (if (= (:id t) token-id)
-                          (assoc t :revoked-at (.toISOString (js/Date.)))
-                          t))
-                      items)))))
-
-(rf/reg-event-db
- :tokens/revoke-failure
- (fn [db [_ error]]
-   (assoc-in db [:tokens :error] error)))
-
-(rf/reg-event-db
- :tokens/dismiss-new
- (fn [db _]
-   (assoc-in db [:tokens :new-token] nil)))
-
-;; ============================================================================
 ;; Settings events
 ;; ============================================================================
 
 (rf/reg-event-fx
  :settings/fetch
  (fn [{:keys [db]} _]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:db         (assoc-in db [:settings :loading?] true)
-        :http-xhrio (fx/dashboard-get "/settings" id-token
-                                      [:settings/fetch-success]
-                                      [:settings/fetch-failure])}))))
+   {:db         (assoc-in db [:settings :loading?] true)
+    :http-xhrio (fx/api-get "/account/settings"
+                            [:settings/fetch-success]
+                            [:settings/fetch-failure])}))
 
 (rf/reg-event-db
  :settings/fetch-success
@@ -774,12 +656,10 @@
 
 (rf/reg-event-fx
  :settings/save-keys
- (fn [{:keys [db]} [_ keys-map]]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:http-xhrio (fx/dashboard-post "/settings/keys" keys-map id-token
-                                       [:settings/save-keys-success]
-                                       [:settings/save-keys-failure])}))))
+ (fn [_ [_ keys-map]]
+   {:http-xhrio (fx/api-post "/account/settings/keys" keys-map
+                             [:settings/save-keys-success]
+                             [:settings/save-keys-failure])}))
 
 (rf/reg-event-fx
  :settings/save-keys-success
@@ -793,12 +673,10 @@
 
 (rf/reg-event-fx
  :settings/delete-keys
- (fn [{:keys [db]} _]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:http-xhrio (fx/dashboard-delete "/settings/keys" id-token
-                                         [:settings/delete-keys-success]
-                                         [:settings/delete-keys-failure])}))))
+ (fn [_ _]
+   {:http-xhrio (fx/api-delete "/account/settings/keys"
+                               [:settings/delete-keys-success]
+                               [:settings/delete-keys-failure])}))
 
 (rf/reg-event-fx
  :settings/delete-keys-success
@@ -809,11 +687,6 @@
  :settings/delete-keys-failure
  (fn [db [_ error]]
    (assoc-in db [:settings :error] error)))
-
-(rf/reg-event-db
- :settings/set-tab
- (fn [db [_ tab]]
-   (assoc-in db [:settings :active-tab] tab)))
 
 (rf/reg-event-db
  :settings/set-key-field
@@ -827,13 +700,11 @@
 (rf/reg-event-fx
  :usage/fetch
  (fn [{:keys [db]} _]
-   (let [id-token (get-in db [:auth :id-token])
-         range-val (get-in db [:usage :range] "30d")]
-     (when id-token
-       {:db         (assoc-in db [:usage :loading?] true)
-        :http-xhrio (fx/dashboard-get (str "/usage?range=" range-val) id-token
-                                      [:usage/fetch-success]
-                                      [:usage/fetch-failure])}))))
+   (let [range-val (get-in db [:usage :range] "30d")]
+     {:db         (assoc-in db [:usage :loading?] true)
+      :http-xhrio (fx/api-get (str "/account/usage?range=" range-val)
+                              [:usage/fetch-success]
+                              [:usage/fetch-failure])})))
 
 (rf/reg-event-db
  :usage/fetch-success
@@ -857,7 +728,7 @@
     :dispatch [:usage/fetch]}))
 
 ;; ============================================================================
-;; Namespace CRUD events (extending existing)
+;; Namespace CRUD events
 ;; ============================================================================
 
 (rf/reg-event-db
@@ -879,12 +750,10 @@
 
 (rf/reg-event-fx
  :namespaces/create
- (fn [{:keys [db]} [_ ns-name]]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:http-xhrio (fx/dashboard-post "/namespaces" {:name ns-name} id-token
-                                       [:namespaces/create-success]
-                                       [:namespaces/create-failure])}))))
+ (fn [_ [_ ns-name]]
+   {:http-xhrio (fx/api-post "/account/namespaces" {:name ns-name}
+                             [:namespaces/create-success]
+                             [:namespaces/create-failure])}))
 
 (rf/reg-event-fx
  :namespaces/create-success
@@ -911,12 +780,10 @@
 (rf/reg-event-fx
  :namespaces/rename
  (fn [{:keys [db]} [_ ns-id new-name]]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when id-token
-       {:db (assoc-in db [:namespaces :rename-target] nil)
-        :http-xhrio (fx/dashboard-put (str "/namespaces/" ns-id) {:name new-name} id-token
-                                      [:namespaces/rename-success]
-                                      [:namespaces/rename-failure])}))))
+   {:db (assoc-in db [:namespaces :rename-target] nil)
+    :http-xhrio (fx/api-put (str "/account/namespaces/" ns-id) {:name new-name}
+                            [:namespaces/rename-success]
+                            [:namespaces/rename-failure])}))
 
 (rf/reg-event-fx
  :namespaces/rename-success
@@ -941,12 +808,11 @@
 (rf/reg-event-fx
  :namespaces/delete
  (fn [{:keys [db]} [_ ns-id]]
-   (let [id-token (get-in db [:auth :id-token])]
-     (when (and id-token ns-id)
-       {:db         (assoc-in db [:namespaces :delete-target] nil)
-        :http-xhrio (fx/dashboard-delete (str "/namespaces/" ns-id) id-token
-                                         [:namespaces/delete-success]
-                                         [:namespaces/delete-failure])}))))
+   (when ns-id
+     {:db         (assoc-in db [:namespaces :delete-target] nil)
+      :http-xhrio (fx/api-delete (str "/account/namespaces/" ns-id)
+                                 [:namespaces/delete-success]
+                                 [:namespaces/delete-failure])})))
 
 (rf/reg-event-fx
  :namespaces/delete-success
@@ -992,12 +858,10 @@
 (rf/reg-event-fx
  :pipeline/fetch-graph
  (fn [{:keys [db]} _]
-   (let [api-key (get-in db [:auth :active-api-key])]
-     (when api-key
-       {:db         (assoc-in db [:pipeline :loading?] true)
-        :http-xhrio (fx/api-get "/pipeline/graph" api-key
-                                [:pipeline/fetch-graph-success]
-                                [:pipeline/fetch-graph-failure])}))))
+   {:db         (assoc-in db [:pipeline :loading?] true)
+    :http-xhrio (fx/api-get "/pipeline/graph"
+                            [:pipeline/fetch-graph-success]
+                            [:pipeline/fetch-graph-failure])}))
 
 (rf/reg-event-db
  :pipeline/fetch-graph-success
@@ -1028,12 +892,10 @@
 (rf/reg-event-fx
  :pipeline/fetch-operations
  (fn [{:keys [db]} _]
-   (let [api-key (get-in db [:auth :active-api-key])]
-     (when api-key
-       {:db         (assoc-in db [:pipeline :ops-loading?] true)
-        :http-xhrio (fx/api-get "/pipeline/operations" api-key
-                                [:pipeline/fetch-operations-success]
-                                [:pipeline/fetch-operations-failure])}))))
+   {:db         (assoc-in db [:pipeline :ops-loading?] true)
+    :http-xhrio (fx/api-get "/pipeline/operations"
+                            [:pipeline/fetch-operations-success]
+                            [:pipeline/fetch-operations-failure])}))
 
 (rf/reg-event-db
  :pipeline/fetch-operations-success
@@ -1074,6 +936,13 @@
                              (assoc-in [:pipeline :pending-op-id]
                                        (when-not op operation-id)))
               :navigate! :pipeline}
-       ;; If op not in cache, fetch operations to find it
-       (nil? op)
-       (assoc :dispatch [:pipeline/fetch-operations])))))
+       (not op) (assoc :dispatch [:pipeline/fetch-operations])))))
+
+(rf/reg-event-db
+ :pipeline/toggle-rel-type
+ (fn [db [_ rel-type]]
+   (update-in db [:graph :hidden-rel-types]
+              (fn [hidden]
+                (if (contains? hidden rel-type)
+                  (disj hidden rel-type)
+                  (conj hidden rel-type))))))

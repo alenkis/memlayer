@@ -52,46 +52,39 @@
     :label "Claude Desktop"
     :type  :json}])
 
-(defn- mcp-json-config [api-key & {:keys [url-key] :or {url-key "url"}}]
+(defn- mcp-json-config [& {:keys [url-key] :or {url-key "url"}}]
   (str "{\n"
        "  \"mcpServers\": {\n"
        "    \"memlayer\": {\n"
-       "      \"" url-key "\": \"https://api.memlayer.dev/mcp\",\n"
-       "      \"headers\": {\n"
-       "        \"X-API-Key\": \"" api-key "\"\n"
-       "      }\n"
+       "      \"" url-key "\": \"http://localhost:8080/mcp\"\n"
        "    }\n"
        "  }\n"
        "}"))
 
-(defn- vscode-json-config [api-key]
+(defn- vscode-json-config []
   (str "{\n"
        "  \"servers\": {\n"
        "    \"memlayer\": {\n"
        "      \"type\": \"http\",\n"
-       "      \"url\": \"https://api.memlayer.dev/mcp\",\n"
-       "      \"headers\": {\n"
-       "        \"X-API-Key\": \"" api-key "\"\n"
-       "      }\n"
+       "      \"url\": \"http://localhost:8080/mcp\"\n"
        "    }\n"
        "  }\n"
        "}"))
 
-(defn- claude-code-command [api-key]
+(defn- claude-code-command []
   (str "claude mcp add memlayer \\\n"
-       "  https://api.memlayer.dev/mcp \\\n"
-       "  --transport http \\\n"
-       "  --header \"X-API-Key: " api-key "\""))
+       "  http://localhost:8080/mcp \\\n"
+       "  --transport http"))
 
-(defn- config-for-client [client api-key]
+(defn- config-for-client [client]
   (case (:type client)
-    :command (claude-code-command api-key)
-    :json    (mcp-json-config api-key :url-key (or (:url-key client) "url"))
-    :json-vscode (vscode-json-config api-key)))
+    :command (claude-code-command)
+    :json    (mcp-json-config :url-key (or (:url-key client) "url"))
+    :json-vscode (vscode-json-config)))
 
-(defn- setup-tabs [_api-key]
+(defn- setup-tabs []
   (let [active-client (r/atom :claude-code)]
-    (fn [api-key]
+    (fn []
       (let [client (first (filter #(= @active-client (:id %)) client-configs))]
         [:div
          ;; Tab bar
@@ -111,54 +104,40 @@
           (when (and client (#{:json :json-vscode} (:type client)))
             [:p {:class "text-sm text-gray-500 dark:text-gray-400 mb-2"}
              (str "Create " (or (:path client) ".mcp.json") " in your project root:")])
-          [code-block {:value (config-for-client client api-key)}]]]))))
+          [code-block {:value (config-for-client client)}]]]))))
 
 (defn- getting-started []
-  (let [api-key @(rf/subscribe [:auth/active-api-key])]
-    [:div {:class "space-y-6 max-w-3xl"}
-     [:div
-      [:h2 {:class "text-2xl font-bold text-gray-900 dark:text-gray-100"} "Welcome to MemLayer"]
-      [:p {:class "text-gray-500 dark:text-gray-400 mt-1"} "Set up persistent memory for your AI agent in under 2 minutes."]]
+  [:div {:class "space-y-6 max-w-3xl"}
+   [:div
+    [:h2 {:class "text-2xl font-bold text-gray-900 dark:text-gray-100"} "Welcome to MemLayer"]
+    [:p {:class "text-gray-500 dark:text-gray-400 mt-1"} "Set up persistent memory for your AI agent in under 2 minutes."]]
 
-     ;; Step 1: API Key
-     [ui/card {}
-      [:div {:class "flex items-start gap-4"}
-       [step-number 1]
-       [:div {:class "flex-1 min-w-0"}
-        [:h3 {:class "text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1"} "Your API key"]
-        [:p {:class "text-sm text-gray-500 dark:text-gray-400 mb-3"} "This key was created for you automatically."]
-        (if api-key
-          [ui/copy-button {:value api-key}]
-          [:p {:class "text-sm text-gray-400 dark:text-gray-500 italic"} "Loading..."])]]]
+   ;; Step 1: Configure agent
+   [ui/card {}
+    [:div {:class "flex items-start gap-4"}
+     [step-number 1]
+     [:div {:class "flex-1 min-w-0"}
+      [:h3 {:class "text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1"} "Add to your agent"]
+      [:p {:class "text-sm text-gray-500 dark:text-gray-400 mb-3"} "Connect memlayer to your AI coding agent."]
+      [setup-tabs]]]]
 
-     ;; Step 2: Configure agent
-     [ui/card {}
-      [:div {:class "flex items-start gap-4"}
-       [step-number 2]
-       [:div {:class "flex-1 min-w-0"}
-        [:h3 {:class "text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1"} "Add to your agent"]
-        [:p {:class "text-sm text-gray-500 dark:text-gray-400 mb-3"} "Connect memlayer to your AI coding agent."]
-        (if api-key
-          [setup-tabs api-key]
-          [:p {:class "text-sm text-gray-400 dark:text-gray-500 italic"} "Waiting for API key..."])]]]
-
-     ;; Step 3: Start using
-     [ui/card {}
-      [:div {:class "flex items-start gap-4"}
-       [step-number 3]
-       [:div {:class "flex-1 min-w-0"}
-        [:h3 {:class "text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1"} "Start using it"]
-        [:p {:class "text-sm text-gray-500 dark:text-gray-400 mb-3"}
-         "Your agent now has persistent memory. It will remember important things from your conversations automatically."]
-        [:div {:class "flex items-center gap-4"}
-         [:a {:href  (routes/href :playground)
-              :class "text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:underline"}
-          "Try the Playground"]
-         [:a {:href  "https://memlayer.dev/getting-started/quickstart-mcp/"
-              :target "_blank"
-              :rel    "noopener noreferrer"
-              :class  "text-gray-500 dark:text-gray-400 text-sm hover:underline"}
-          "Read the docs"]]]]]]))
+   ;; Step 2: Start using
+   [ui/card {}
+    [:div {:class "flex items-start gap-4"}
+     [step-number 2]
+     [:div {:class "flex-1 min-w-0"}
+      [:h3 {:class "text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1"} "Start using it"]
+      [:p {:class "text-sm text-gray-500 dark:text-gray-400 mb-3"}
+       "Your agent now has persistent memory. It will remember important things from your conversations automatically."]
+      [:div {:class "flex items-center gap-4"}
+       [:a {:href  (routes/href :playground)
+            :class "text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:underline"}
+        "Try the Playground"]
+       [:a {:href  "https://memlayer.dev/getting-started/quickstart-mcp/"
+            :target "_blank"
+            :rel    "noopener noreferrer"
+            :class  "text-gray-500 dark:text-gray-400 text-sm hover:underline"}
+        "Read the docs"]]]]]])
 
 ;; ---------------------------------------------------------------------------
 ;; Stats dashboard (existing)
@@ -255,8 +234,7 @@
   (rf/dispatch [:fetch-consistency])
   (fn []
     (let [stats        @(rf/subscribe [:memory-stats])
-          api-key      @(rf/subscribe [:auth/active-api-key])
           global-total (get-in stats [:data :global-total] 0)]
-      (if (and api-key (pos? global-total))
+      (if (pos? global-total)
         [stats-dashboard]
         [getting-started]))))

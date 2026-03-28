@@ -29,10 +29,9 @@
                       :create-modal {:open? false :name ""}
                       :delete-target nil :rename-target nil}
    :active-namespace "default"
-   :auth             {:user nil :loading? true :id-token nil :active-api-key nil}
+   :auth             {:user nil :loading? true}
    :theme            :light
-   :tokens           {:items [] :loading? false :error nil :new-token nil}
-   :settings         {:data nil :loading? false :error nil :active-tab :general
+   :settings         {:data nil :loading? false :error nil
                       :keys-form {:groq-key "" :openai-key ""}}
    :usage            {:data nil :loading? false :error nil :range "30d"}
    :pipeline         {:data nil :loading? false :error nil

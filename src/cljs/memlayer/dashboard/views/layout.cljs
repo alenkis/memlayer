@@ -121,21 +121,8 @@
       [pipeline-nav-item current-page]]
      [user-panel]]))
 
-(defn- main-content [current-page api-key api-key-error]
-  (cond
-    api-key
-    [(get page-views current-page dashboard/page)]
-
-    api-key-error
-    [:div {:class "flex flex-col items-center justify-center h-64 space-y-4"}
-     [:p {:class "text-red-500 dark:text-red-400 text-sm"} api-key-error]
-     [:button {:on-click #(rf/dispatch [:auth/retry-api-key])
-               :class    "px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors cursor-pointer"}
-      "Retry"]]
-
-    :else
-    [:div {:class "flex items-center justify-center h-64"}
-     [ui/loading-spinner]]))
+(defn- main-content [current-page]
+  [(get page-views current-page dashboard/page)])
 
 (defn layout []
   (let [current-page   @(rf/subscribe [:current-page])
@@ -155,13 +142,11 @@
         [login/page])
 
       :else
-      (let [api-key       @(rf/subscribe [:auth/active-api-key])
-            api-key-error @(rf/subscribe [:auth/api-key-error])]
-        [:div {:class "flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900"}
-         [sidebar]
-         [:div {:class "flex-1 flex flex-col min-h-0 min-w-0"}
-          [:div {:class "flex items-center justify-end px-8 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0"}
-           [:div {:class (when (= current-page :usage) "invisible")}
-            [namespace-selector]]]
-          [:main {:class "flex-1 flex flex-col min-h-0 min-w-0 overflow-auto p-8"}
-           [main-content current-page api-key api-key-error]]]]))))
+      [:div {:class "flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900"}
+       [sidebar]
+       [:div {:class "flex-1 flex flex-col min-h-0 min-w-0"}
+        [:div {:class "flex items-center justify-end px-8 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0"}
+         [:div {:class (when (= current-page :usage) "invisible")}
+          [namespace-selector]]]
+        [:main {:class "flex-1 flex flex-col min-h-0 min-w-0 overflow-auto p-8"}
+         [main-content current-page]]]])))
