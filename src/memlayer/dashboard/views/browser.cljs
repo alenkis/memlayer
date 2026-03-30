@@ -45,8 +45,6 @@
     (:content memory)]
    [:td {:class "px-4 py-3"}
     [layer-badge/layer-badge (:layer memory)]]
-   [:td {:class "px-4 py-3 text-sm text-gray-600 dark:text-gray-400"}
-    (.toFixed (or (:importance memory) 0) 2)]
    [:td {:class "px-4 py-3 text-sm text-gray-500 dark:text-gray-400"}
     (:source memory)]])
 
@@ -62,7 +60,6 @@
          [:tr
           [:th {:scope "col" :class "px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase"} "Content"]
           [:th {:scope "col" :class "px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase"} "Layer"]
-          [:th {:scope "col" :class "px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase"} "Importance"]
           [:th {:scope "col" :class "px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase"} "Source"]]]
         [:tbody {:class "bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"}
          (for [memory (:items memories)]
@@ -84,9 +81,6 @@
           [:div
            [:dt {:class "text-sm font-medium text-gray-500 dark:text-gray-400"} "Layer"]
            [:dd {:class "mt-1"} [layer-badge/layer-badge (:layer memory)]]]
-          [:div
-           [:dt {:class "text-sm font-medium text-gray-500 dark:text-gray-400"} "Importance"]
-           [:dd {:class "mt-1 text-gray-900 dark:text-gray-100"} (.toFixed (or (:importance memory) 0) 2)]]
           [:div
            [:dt {:class "text-sm font-medium text-gray-500 dark:text-gray-400"} "Source"]
            [:dd {:class "mt-1 text-gray-900 dark:text-gray-100"} (:source memory)]]

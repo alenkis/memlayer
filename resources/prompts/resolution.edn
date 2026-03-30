@@ -39,7 +39,6 @@ Return a JSON object with an \"operations\" array. Each element has:
   - \"concept\": abstract ideas within a domain (e.g., \"Type Systems\", \"Jazz\")
   - \"fact\": specific, concrete information (e.g., \"User prefers dark mode\")
   - \"episode\": time-bound events (e.g., \"User asked about monads on 2024-01-15\")
-- \"importance\": 0.0 to 1.0
 - \"reasoning\": brief explanation of your decision
 
 Return ONLY valid JSON, no explanation."}

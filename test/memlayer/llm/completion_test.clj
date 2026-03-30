@@ -6,20 +6,19 @@
 
 (deftest parse-extraction-response-test
   (testing "parses a JSON array response"
-    (let [text "[{\"content\":\"User likes Clojure\",\"layer\":\"fact\",\"importance\":0.8}]"
+    (let [text "[{\"content\":\"User likes Clojure\",\"layer\":\"fact\"}]"
           result (completion/parse-extraction-response text)]
       (is (= 1 (count result)))
       (is (= "User likes Clojure" (:content (first result))))
-      (is (= "fact" (:layer (first result))))
-      (is (= 0.8 (:importance (first result))))))
+      (is (= "fact" (:layer (first result))))))
 
   (testing "rejects markdown code fences (json_object mode should not produce them)"
-    (let [text "```json\n[{\"content\":\"test\",\"layer\":\"concept\",\"importance\":0.5}]\n```"]
+    (let [text "```json\n[{\"content\":\"test\",\"layer\":\"concept\"}]\n```"]
       (is (thrown? Exception (completion/parse-extraction-response text)))))
 
   (testing "parses multiple items"
-    (let [text "[{\"content\":\"A\",\"layer\":\"domain\",\"importance\":0.9},
-                 {\"content\":\"B\",\"layer\":\"episode\",\"importance\":0.3}]"
+    (let [text "[{\"content\":\"A\",\"layer\":\"domain\"},
+                 {\"content\":\"B\",\"layer\":\"episode\"}]"
           result (completion/parse-extraction-response text)]
       (is (= 2 (count result)))
       (is (= "domain" (:layer (first result))))
@@ -98,7 +97,7 @@
                        :relationships [{:target_id target-id :type "elaborates"}
                                        {:target_id target-id :type "supports"}]}))
           result (completion/decide-action provider th/mock-prompts
-                                           {:content "test memory" :layer "fact" :importance 0.7}
+                                           {:content "test memory" :layer "fact"}
                                            [])]
       (is (= "CREATE" (get-in result [:result :action])))
       (is (= 2 (count (get-in result [:result :relationships]))))
@@ -113,7 +112,7 @@
                       {:action "NOOP"
                        :reasoning "Already known"}))
           result (completion/decide-action provider th/mock-prompts
-                                           {:content "test" :layer "fact" :importance 0.5}
+                                           {:content "test" :layer "fact"}
                                            [])]
       (is (= "NOOP" (get-in result [:result :action])))
       (is (nil? (get-in result [:result :relationships]))))))
@@ -132,7 +131,7 @@
                              :relationship/type :related-to}]
                     :known-types [:related-to :elaborates]}]
       (completion/decide-action provider th/mock-prompts
-                                {:content "test memory" :layer "fact" :importance 0.7}
+                                {:content "test memory" :layer "fact"}
                                 [{:memory-id id1 :content "existing" :distance 0.1}]
                                 :subgraph subgraph)
       (let [user-msg (:content (second @captured-msgs))]

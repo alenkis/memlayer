@@ -87,9 +87,9 @@
         (let [deps (assoc (make-deps conn)
                           :chat-provider (th/mock-flow-provider
                                           {:extract-result
-                                           [{:content "User likes Clojure" :layer "fact" :importance 0.8}
-                                            {:content "User is a developer" :layer "concept" :importance 0.6}
-                                            {:content "Programming" :layer "domain" :importance 0.5}]}))
+                                           [{:content "User likes Clojure" :layer "fact"}
+                                            {:content "User is a developer" :layer "concept"}
+                                            {:content "Programming" :layer "domain"}]}))
               flow (th/start-test-flow! deps)]
           (try
             (let [result (retention-flow/submit! flow
@@ -119,8 +119,8 @@
                              (let [system-content (:content (first msgs))]
                                (if (= system-content (:batch-extraction th/mock-prompts))
                                  (do (swap! extract-count inc)
-                                     {:memories [{:content "fact 1" :layer "fact" :importance 0.7}
-                                                 {:content "fact 2" :layer "fact" :importance 0.6}]})
+                                     {:memories [{:content "fact 1" :layer "fact"}
+                                                 {:content "fact 2" :layer "fact"}]})
                                  {:action "CREATE" :reasoning "New info"})))))
               flow (th/start-test-flow! deps)]
           (try

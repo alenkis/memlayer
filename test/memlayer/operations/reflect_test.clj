@@ -87,14 +87,12 @@
 (defn- insert-orphan-fact! [conn content namespace]
   (dh/insert-memory! conn {:memory/content    content
                            :memory/layer      :layer/fact
-                           :memory/importance (float 0.5)
                            :memory/source     "test"
                            :memory/namespace  namespace}))
 
 (defn- insert-parented-fact! [conn content namespace parent-id]
   (dh/insert-memory! conn {:memory/content    content
                            :memory/layer      :layer/fact
-                           :memory/importance (float 0.5)
                            :memory/source     "test"
                            :memory/namespace  namespace
                            :memory/parent-id  parent-id}))
@@ -102,7 +100,6 @@
 (defn- insert-concept! [conn content namespace]
   (dh/insert-memory! conn {:memory/content    content
                            :memory/layer      :layer/concept
-                           :memory/importance (float 0.8)
                            :memory/source     "test"
                            :memory/namespace  namespace}))
 
@@ -138,7 +135,7 @@
 (deftest organize-creates-concept-with-correct-attributes
   (th/with-datahike
     (fn [conn]
-      (testing "created concept has correct layer, source, importance, and namespace"
+      (testing "created concept has correct layer, source, and namespace"
         (insert-orphan-fact! conn "Fact 1" "test-ns")
         (insert-orphan-fact! conn "Fact 2" "test-ns")
 
@@ -150,7 +147,6 @@
             (is (= :layer/concept (:memory/layer c)))
             (is (= "reflect" (:memory/source c)))
             (is (= "test-ns" (:memory/namespace c)))
-            (is (= (float 0.8) (:memory/importance c)))
             (is (string? (:memory/content c)))))))))
 
 (deftest organize-links-all-facts-in-group
@@ -499,7 +495,6 @@
       (testing "get-domains returns only domain-layer memories"
         (dh/insert-memory! conn {:memory/content   "Domain A"
                                  :memory/layer     :layer/domain
-                                 :memory/importance (float 0.9)
                                  :memory/source    "test"
                                  :memory/namespace "test-ns"})
         (insert-concept! conn "Concept" "test-ns")
@@ -512,12 +507,10 @@
       (testing "get-orphan-concepts returns concepts without parent-id"
         (let [domain-id (dh/insert-memory! conn {:memory/content   "Domain"
                                                  :memory/layer     :layer/domain
-                                                 :memory/importance (float 0.9)
                                                  :memory/source    "test"
                                                  :memory/namespace "test-ns"})
               _parented (dh/insert-memory! conn {:memory/content   "Parented Concept"
                                                  :memory/layer     :layer/concept
-                                                 :memory/importance (float 0.8)
                                                  :memory/source    "test"
                                                  :memory/namespace "test-ns"
                                                  :memory/parent-id domain-id})
@@ -575,7 +568,6 @@
         (let [concept-id (insert-concept! conn "Test Concept" "test-ns")
               _summary   (dh/insert-memory! conn {:memory/content   "Summary of test concept"
                                                   :memory/layer     :layer/summary
-                                                  :memory/importance (float 0.7)
                                                   :memory/source    "reflect"
                                                   :memory/namespace "test-ns"
                                                   :memory/parent-id concept-id})

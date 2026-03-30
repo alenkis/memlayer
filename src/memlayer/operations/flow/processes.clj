@@ -34,7 +34,7 @@
 
 (defn prepare-context-proc
   "Factory: closes over deps so they stay out of process state."
-  [{:keys [db tuning correlation-map]}]
+  [{:keys [db tuning]}]
   (flow/process
    (fn
      ([] {:ins {:in nil} :outs {:out nil} :workload :io})
@@ -98,8 +98,7 @@
                                 :extracted      total
                                 :memories       (mapv (fn [mem]
                                                         {:content    (truncate (:content mem) 200)
-                                                         :layer      (:layer mem)
-                                                         :importance (:importance mem)})
+                                                         :layer      (:layer mem)})
                                                       extracted)
                                 :layers         (frequencies (map :layer extracted))
                                 :tokens         usage})]

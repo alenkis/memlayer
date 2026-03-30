@@ -145,7 +145,6 @@
     (cond-> {:memory-id  (str memory-id)
              :content    (:memory/content mem)
              :layer      (some-> (:memory/layer mem) name)
-             :importance (double (or (:memory/importance mem) 0.0))
              :source     (or (:memory/source mem) "")
              :namespace  (:memory/namespace mem)
              :parent-id  (some-> (:memory/parent-id mem) str)

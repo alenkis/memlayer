@@ -329,10 +329,7 @@
             ^{:key i}
             [:div {:class "bg-gray-50 dark:bg-gray-900 rounded p-2 text-sm"}
              [:div {:class "flex items-center gap-2 mb-1"}
-              (when (:layer mem) [layer-badge/layer-badge (:layer mem)])
-              (when (:importance mem)
-                [:span {:class "text-xs text-gray-500 dark:text-gray-400"}
-                 (str "importance: " (:importance mem))])]
+              (when (:layer mem) [layer-badge/layer-badge (:layer mem)])]
              [:p {:class "text-gray-900 dark:text-gray-100"} (:content mem)]])]])])
    [token-summary (:tokens op)]])
 

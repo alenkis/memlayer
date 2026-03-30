@@ -32,13 +32,12 @@
 (defn- create-memory-node!
   "Create a memory node, embed it, store in vector index. Returns the id, or nil
    when content is blank (guards against LLM returning empty concept names)."
-  [db vector-index embedding-provider {:keys [content layer namespace importance source step]}]
+  [db vector-index embedding-provider {:keys [content layer namespace source step]}]
   (when (and content (seq (str/trim content)))
     (let [id (UUID/randomUUID)]
       (dh/insert-memory! db {:memory/id         id
                              :memory/content    content
                              :memory/layer      layer
-                             :memory/importance (float (or importance 0.8))
                              :memory/source     (or source "reflect")
                              :memory/namespace  namespace})
       (embed-and-store! db vector-index embedding-provider content id
@@ -141,7 +140,6 @@
                                                         {:content    content
                                                          :layer      :layer/domain
                                                          :namespace  namespace
-                                                         :importance 0.9
                                                          :step       "domain-embed"})]
                        (if did
                          (do (doseq [ci concept-indices]
@@ -223,7 +221,6 @@
               (dh/insert-memory! db {:memory/id         id
                                      :memory/content    summary-text
                                      :memory/layer      :layer/summary
-                                     :memory/importance (float 0.8)
                                      :memory/source     "reflect"
                                      :memory/parent-id  (:memory/id node)
                                      :memory/namespace  namespace})

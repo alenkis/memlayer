@@ -23,9 +23,6 @@
     :db/valueType   :db.type/keyword
     :db/cardinality :db.cardinality/one
     :db/index       true}
-   {:db/ident       :memory/importance
-    :db/valueType   :db.type/float
-    :db/cardinality :db.cardinality/one}
    {:db/ident       :memory/source
     :db/valueType   :db.type/string
     :db/cardinality :db.cardinality/one}
@@ -530,7 +527,7 @@
   (let [conn (:conn store)]
     (when (seq ids)
       (d/q '[:find [(pull ?e [:memory/id :memory/content :memory/layer :memory/parent-id
-                              :memory/importance :memory/source :memory/namespace]) ...]
+                              :memory/source :memory/namespace]) ...]
              :in $ [?id ...]
              :where [?e :memory/id ?id]]
            @conn (vec (set ids))))))

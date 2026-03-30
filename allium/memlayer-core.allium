@@ -28,12 +28,6 @@ config {
 -- Value Types
 -- =============================================================================
 
-value Importance {
-    score: Decimal
-
-    invariant Range { score >= 0.0 and score <= 1.0 }
-}
-
 value Similarity {
     score: Decimal
 
@@ -75,7 +69,6 @@ entity Memory {
     layer: Domain | Concept | Fact | Episode | Summary
     parent: Memory?
     contradiction_ids: Set<EntityID>    -- bidirectional links to contradicting facts
-    importance: Importance
     access_count: Integer
     last_accessed: Timestamp?
     system_time: Timestamp              -- when we recorded this (transaction time)
@@ -215,7 +208,6 @@ rule RetainCreate {
         content: content,
         layer: decision.layer ?? extraction.layer,
         parent: decision.parent,
-        importance: extraction.importance,
         access_count: 0,
         system_time: now,
         source: extraction.source,
@@ -257,7 +249,6 @@ rule RetainUpdate {
         content: content,
         layer: old_memory.layer,
         parent: old_memory.parent,
-        importance: old_memory.importance,
         access_count: old_memory.access_count,
         system_time: now,
         source: old_memory.source,

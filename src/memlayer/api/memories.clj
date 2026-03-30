@@ -12,7 +12,6 @@
   (cond-> {:id         (str (:memory/id m))
            :content    (:memory/content m)
            :layer      (name (:memory/layer m))
-           :importance (:memory/importance m)
            :source     (:memory/source m)
            :namespace  (:memory/namespace m)
            :parent-id  (some-> (:memory/parent-id m) str)}

@@ -208,8 +208,6 @@
                 [:div {:class "flex gap-3 mt-2"}
                  [layer-badge/layer-badge (:layer memory)]
                  [:span {:class "text-xs text-gray-500 dark:text-gray-400"}
-                  (str "importance: " (.toFixed (or (:importance memory) 0) 2))]
-                 [:span {:class "text-xs text-gray-500 dark:text-gray-400"}
                   (str "distance: " (.toFixed (or (:distance memory) 0) 4))]]]]])]
           [loading/empty-state "No matching memories found"])])]))
 

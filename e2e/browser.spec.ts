@@ -72,7 +72,7 @@ test.describe("Browser: Memory Listing, Search, and Details", () => {
 
     await test.step("memory detail modal shows on click", async () => {
       await page.getByText(/Whiskers/i).first().click();
-      await expect(page.getByText(/importance/i).first()).toBeVisible({
+      await expect(page.getByText(/source/i).first()).toBeVisible({
         timeout: 5_000,
       });
     });

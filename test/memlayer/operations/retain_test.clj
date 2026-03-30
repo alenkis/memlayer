@@ -51,8 +51,8 @@
       (testing "retain handles extraction yielding multiple memories"
         (let [deps (make-deps conn
                               {:extract-result
-                               [{:content "User likes Clojure" :layer "fact" :importance 0.8}
-                                {:content "User is a developer" :layer "concept" :importance 0.6}]})
+                               [{:content "User likes Clojure" :layer "fact"}
+                                {:content "User is a developer" :layer "concept"}]})
               flow (th/start-test-flow! deps)]
           (try
             (let [result (retention-flow/submit! flow
@@ -88,7 +88,7 @@
         (let [decide-atom (atom {:action "CREATE" :reasoning "New info"})
               deps  (make-deps conn
                                {:extract-result [{:content "User's favorite number is 42"
-                                                  :layer "fact" :importance 0.7}]
+                                                  :layer "fact"}]
                                 :decision-fn (fn [_] @decide-atom)})
               flow  (th/start-test-flow! deps)]
           (try
@@ -123,7 +123,7 @@
         (let [decide-atom (atom {:action "CREATE" :reasoning "New info"})
               deps  (make-deps conn
                                {:extract-result [{:content "User's phone number is 555-1234"
-                                                  :layer "fact" :importance 0.7}]
+                                                  :layer "fact"}]
                                 :decision-fn (fn [_] @decide-atom)})
               flow  (th/start-test-flow! deps)]
           (try
@@ -192,7 +192,7 @@
               decide-atom (atom {:action "CREATE" :reasoning "New info"})
               deps  (make-deps conn
                                {:extract-result [{:content "Clojure uses the JVM"
-                                                  :layer "fact" :importance 0.7}]
+                                                  :layer "fact"}]
                                 :decision-fn (fn [_] @decide-atom)})
               flow  (th/start-test-flow! deps)]
           (try
@@ -230,7 +230,7 @@
         (let [decide-atom (atom {:action "CREATE" :reasoning "New info"})
               deps  (make-deps conn
                                {:extract-result [{:content "User's favorite language is Clojure"
-                                                  :layer "fact" :importance 0.8}]
+                                                  :layer "fact"}]
                                 :decision-fn (fn [_] @decide-atom)})
               flow  (th/start-test-flow! deps)]
           (try
@@ -272,7 +272,7 @@
         (let [decide-atom (atom {:action "CREATE" :reasoning "New info"})
               deps  (make-deps conn
                                {:extract-result [{:content "Some fact"
-                                                  :layer "fact" :importance 0.5}]
+                                                  :layer "fact"}]
                                 :decision-fn (fn [_] @decide-atom)})
               flow  (th/start-test-flow! deps)]
           (try
@@ -309,7 +309,7 @@
         (let [decide-atom (atom {:action "CREATE" :reasoning "New info"})
               deps  (make-deps conn
                                {:extract-result [{:content "Related fact"
-                                                  :layer "fact" :importance 0.6}]
+                                                  :layer "fact"}]
                                 :decision-fn (fn [_] @decide-atom)})
               flow  (th/start-test-flow! deps)]
           (try
