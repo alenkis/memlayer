@@ -98,8 +98,7 @@
                                 :extracted      total
                                 :memories       (mapv (fn [mem]
                                                         {:content    (truncate (:content mem) 200)
-                                                         :layer      (:layer mem)
-                                                         :importance (:importance mem)})
+                                                         :layer      (:layer mem)})
                                                       extracted)
                                 :layers         (frequencies (map :layer extracted))
                                 :tokens         usage})]

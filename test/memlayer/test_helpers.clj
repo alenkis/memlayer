@@ -80,8 +80,7 @@
 
 (def ^:private default-extract-result
   [{:content "User prefers dark mode"
-    :layer "fact"
-    :importance 0.7}])
+    :layer "fact"}])
 
 (def ^:private default-decision-result
   {:action "CREATE"

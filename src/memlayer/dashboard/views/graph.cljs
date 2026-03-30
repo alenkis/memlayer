@@ -493,9 +493,6 @@
       (if memory
         [:div {:class "space-y-2 text-xs border-t border-gray-700 pt-2"}
          [:div {:class "flex justify-between"}
-          [:span {:class "text-gray-400"} "Importance"]
-          [:span {:class "text-gray-200"} (.toFixed (or (:importance memory) 0) 2)]]
-         [:div {:class "flex justify-between"}
           [:span {:class "text-gray-400"} "Source"]
           [:span {:class "text-gray-200"} (or (:source memory) "-")]]
          ;; Hierarchy — parent navigation

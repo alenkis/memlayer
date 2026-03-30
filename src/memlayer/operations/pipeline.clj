@@ -62,10 +62,9 @@
 
 (defn build-mem-attrs
   "Build memory attribute map from decision context. Pure function."
-  [{:keys [content layer-kw importance source namespace display-title]}]
+  [{:keys [content layer-kw source namespace display-title]}]
   (cond-> {:memory/content    content
            :memory/layer      (or layer-kw :layer/fact)
-           :memory/importance (float (or importance 0.5))
            :memory/source     source
            :memory/namespace  namespace}
     display-title (assoc :memory/display-title display-title)))
@@ -157,7 +156,6 @@
                                    :relationships relationships})
     (let [attrs (build-mem-attrs {:content       content
                                   :layer-kw      layer-kw
-                                  :importance    (:importance mem)
                                   :source        source
                                   :namespace     namespace
                                   :display-title display-title})]

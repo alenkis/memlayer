@@ -89,9 +89,9 @@
         (let [deps (assoc (make-deps conn)
                           :chat-provider (th/mock-flow-provider
                                           {:extract-result
-                                           [{:content "Fact one" :layer "fact" :importance 0.5}
-                                            {:content "Fact two" :layer "fact" :importance 0.6}
-                                            {:content "Fact three" :layer "fact" :importance 0.7}]}))
+                                           [{:content "Fact one" :layer "fact"}
+                                            {:content "Fact two" :layer "fact"}
+                                            {:content "Fact three" :layer "fact"}]}))
               flow (th/start-test-flow! deps)]
           (try
             (retention-flow/submit! flow
@@ -144,13 +144,11 @@
         fact1-id   (dh/insert-memory! conn {:memory/content    "Clojure uses immutable data structures"
                                             :memory/layer      :layer/fact
                                             :memory/namespace  "test"
-                                            :memory/importance (float 0.8)
                                             :memory/source     "docs"
                                             :memory/parent-id  concept-id})
         fact2-id   (dh/insert-memory! conn {:memory/content    "Haskell enforces pure functions"
                                             :memory/layer      :layer/fact
                                             :memory/namespace  "test"
-                                            :memory/importance (float 0.7)
                                             :memory/source     "docs"
                                             :memory/parent-id  concept-id})
         summary-id (dh/insert-memory! conn {:memory/content   "FP emphasizes immutability and pure functions"

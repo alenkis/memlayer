@@ -131,13 +131,11 @@
 (def gen-mem-attrs-input
   (gen/let [content       (gen/not-empty gen/string-alphanumeric)
             layer-kw      gen-layer-kw
-            importance    (gen/one-of [(gen/return nil)
-                                       (gen/double* {:min 0.0 :max 1.0 :NaN? false :infinite? false})])
             source        (gen/not-empty gen/string-alphanumeric)
             namespace     (gen/not-empty gen/string-alphanumeric)
             display-title (gen/one-of [(gen/return nil)
                                        (gen/not-empty gen/string-alphanumeric)])]
-    {:content content :layer-kw layer-kw :importance importance
+    {:content content :layer-kw layer-kw
      :source source :namespace namespace :display-title display-title}))
 
 (defspec build-mem-attrs-has-required-keys 100
@@ -145,7 +143,6 @@
                 (let [attrs (pipeline/build-mem-attrs input)]
                   (and (contains? attrs :memory/content)
                        (contains? attrs :memory/layer)
-                       (contains? attrs :memory/importance)
                        (contains? attrs :memory/source)
                        (contains? attrs :memory/namespace)))))
 
@@ -155,10 +152,6 @@
                   (if (:display-title input)
                     (contains? attrs :memory/display-title)
                     (not (contains? attrs :memory/display-title))))))
-
-(defspec build-mem-attrs-importance-is-float 100
-  (prop/for-all [input gen-mem-attrs-input]
-                (float? (:memory/importance (pipeline/build-mem-attrs input)))))
 
 (defspec build-mem-attrs-layer-defaults-to-fact 100
   (prop/for-all [input gen-mem-attrs-input]

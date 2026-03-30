@@ -13,7 +13,6 @@
    [:memory/id uuid?]
    [:memory/content :string]
    [:memory/layer Layer]
-   [:memory/importance [:double {:min 0.0 :max 1.0}]]
    [:memory/source :string]
    [:memory/namespace {:optional true} :string]
    [:memory/parent-id {:optional true} uuid?]])
@@ -49,8 +48,7 @@
 (def ExtractedMemory
   [:map
    [:content :string]
-   [:layer [:enum "domain" "concept" "fact" "episode"]]
-   [:importance [:double {:min 0.0 :max 1.0}]]])
+   [:layer [:enum "domain" "concept" "fact" "episode"]]])
 
 (def ExtractionResult
   [:vector ExtractedMemory])
@@ -82,7 +80,6 @@
    [:memory-id :string]
    [:content :string]
    [:layer :string]
-   [:importance :double]
    [:source :string]
    [:namespace {:optional true} :string]
    [:distance :double]])

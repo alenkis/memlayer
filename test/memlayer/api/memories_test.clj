@@ -115,7 +115,6 @@
                   mem-id     (java.util.UUID/fromString mem-id-str)
                   other-id   (dh/insert-memory! db {:memory/content   "related memory"
                                                     :memory/layer     :layer/fact
-                                                    :memory/importance (float 0.5)
                                                     :memory/source    "test"
                                                     :memory/namespace "default"})
                   _          (dh/insert-relationship! db {:source-id mem-id
@@ -159,7 +158,6 @@
                   mem-id     (java.util.UUID/fromString mem-id-str)
                   other-id   (dh/insert-memory! db {:memory/content   "memory B"
                                                     :memory/layer     :layer/fact
-                                                    :memory/importance (float 0.5)
                                                     :memory/source    "test"
                                                     :memory/namespace "default"})
                   _          (dh/insert-relationship! db {:source-id mem-id

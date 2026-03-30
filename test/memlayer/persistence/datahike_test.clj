@@ -10,7 +10,6 @@
         (let [mem-id (dh/insert-memory! conn
                                         {:memory/content   "User prefers dark mode"
                                          :memory/layer     :layer/fact
-                                         :memory/importance (float 0.7)
                                          :memory/source    "conversation"
                                          :memory/namespace "default"})
               result (dh/get-memory conn mem-id)]
@@ -25,7 +24,6 @@
         (dotimes [i 5]
           (dh/insert-memory! conn {:memory/content (str "memory " i)
                                    :memory/layer :layer/fact
-                                   :memory/importance (float 0.5)
                                    :memory/source "test"
                                    :memory/namespace "project-a"}))
         (let [results (dh/get-memories-by-namespace conn "project-a" :limit 3)]
@@ -38,7 +36,6 @@
       (testing "update a memory's content in place"
         (let [mem-id (dh/insert-memory! conn {:memory/content "original"
                                               :memory/layer :layer/fact
-                                              :memory/importance (float 0.5)
                                               :memory/source "test"
                                               :memory/namespace "default"})
               _      (dh/update-memory! conn mem-id {:memory/content "updated"})
@@ -51,7 +48,6 @@
       (testing "retracted memory is gone from current DB but in history"
         (let [mem-id (dh/insert-memory! conn {:memory/content "to be forgotten"
                                               :memory/layer :layer/fact
-                                              :memory/importance (float 0.5)
                                               :memory/source "test"
                                               :memory/namespace "default"})
               _      (dh/retract-memory! conn mem-id)]
@@ -64,7 +60,6 @@
       (testing "d/history tracks attribute changes"
         (let [mem-id (dh/insert-memory! conn {:memory/content "v1"
                                               :memory/layer :layer/fact
-                                              :memory/importance (float 0.5)
                                               :memory/source "test"
                                               :memory/namespace "default"})
               _      (dh/update-memory! conn mem-id {:memory/content "v2"})
@@ -78,12 +73,10 @@
       (testing "insert a relationship between two memories"
         (let [src-id (dh/insert-memory! conn {:memory/content "Clojure"
                                               :memory/layer :layer/concept
-                                              :memory/importance (float 0.8)
                                               :memory/source "test"
                                               :memory/namespace "default"})
               tgt-id (dh/insert-memory! conn {:memory/content "Functional programming"
                                               :memory/layer :layer/domain
-                                              :memory/importance (float 0.9)
                                               :memory/source "test"
                                               :memory/namespace "default"})
               rel-id (th/insert-relationship! conn {:source-id src-id
@@ -104,7 +97,6 @@
         (dotimes [i 3]
           (dh/insert-memory! conn {:memory/content (str "m" i)
                                    :memory/layer :layer/fact
-                                   :memory/importance (float 0.5)
                                    :memory/source "test"
                                    :memory/namespace "default"}))
         (is (= 3 (dh/count-all-memories conn)))))))
@@ -115,17 +107,14 @@
       (testing "counts memories filtered by namespace and layer"
         (dh/insert-memory! conn {:memory/content "a"
                                  :memory/layer :layer/fact
-                                 :memory/importance (float 0.5)
                                  :memory/source "test"
                                  :memory/namespace "ns-a"})
         (dh/insert-memory! conn {:memory/content "b"
                                  :memory/layer :layer/concept
-                                 :memory/importance (float 0.5)
                                  :memory/source "test"
                                  :memory/namespace "ns-a"})
         (dh/insert-memory! conn {:memory/content "c"
                                  :memory/layer :layer/fact
-                                 :memory/importance (float 0.5)
                                  :memory/source "test"
                                  :memory/namespace "ns-b"})
         (is (= 3 (dh/count-all-memories conn)))
@@ -142,12 +131,10 @@
         (dotimes [i 5]
           (dh/insert-memory! conn {:memory/content (str "m" i)
                                    :memory/layer :layer/fact
-                                   :memory/importance (float 0.5)
                                    :memory/source "test"
                                    :memory/namespace "counted-ns"}))
         (dh/insert-memory! conn {:memory/content "other"
                                  :memory/layer :layer/fact
-                                 :memory/importance (float 0.5)
                                  :memory/source "test"
                                  :memory/namespace "other-ns"})
         (is (= 5 (dh/count-memories-by-namespace conn "counted-ns")))
@@ -163,7 +150,6 @@
         (dotimes [i 10]
           (dh/insert-memory! conn {:memory/content (str "m" i)
                                    :memory/layer :layer/fact
-                                   :memory/importance (float 0.5)
                                    :memory/source "test"
                                    :memory/namespace "default"}))
         (is (= 10 (count (dh/get-all-memories conn))))
@@ -177,13 +163,11 @@
       (testing "get-children respects limit and offset"
         (let [parent-id (dh/insert-memory! conn {:memory/content "parent"
                                                  :memory/layer :layer/domain
-                                                 :memory/importance (float 0.8)
                                                  :memory/source "test"
                                                  :memory/namespace "default"})]
           (dotimes [i 5]
             (dh/insert-memory! conn {:memory/content (str "child " i)
                                      :memory/layer :layer/fact
-                                     :memory/importance (float 0.5)
                                      :memory/source "test"
                                      :memory/namespace "default"
                                      :memory/parent-id parent-id}))
@@ -198,13 +182,11 @@
       (testing "get-relationships returns relationships for given memory IDs"
         (let [src-id (dh/insert-memory! conn {:memory/content "source"
                                               :memory/layer :layer/concept
-                                              :memory/importance (float 0.8)
                                               :memory/source "test"
                                               :memory/namespace "default"})]
           (dotimes [i 5]
             (let [tgt-id (dh/insert-memory! conn {:memory/content (str "target " i)
                                                   :memory/layer :layer/fact
-                                                  :memory/importance (float 0.5)
                                                   :memory/source "test"
                                                   :memory/namespace "default"})]
               (th/insert-relationship! conn {:source-id src-id
@@ -220,7 +202,6 @@
         (let [ids (mapv (fn [i]
                           (dh/insert-memory! conn {:memory/content (str "m" i)
                                                    :memory/layer :layer/fact
-                                                   :memory/importance (float 0.5)
                                                    :memory/source "test"
                                                    :memory/namespace "default"}))
                         (range 3))
@@ -236,12 +217,10 @@
       (testing "dh/insert-relationship! creates a relationship and returns UUID"
         (let [src-id (dh/insert-memory! conn {:memory/content "A"
                                               :memory/layer :layer/fact
-                                              :memory/importance (float 0.5)
                                               :memory/source "test"
                                               :memory/namespace "default"})
               tgt-id (dh/insert-memory! conn {:memory/content "B"
                                               :memory/layer :layer/fact
-                                              :memory/importance (float 0.5)
                                               :memory/source "test"
                                               :memory/namespace "default"})
               rel-id (dh/insert-relationship! conn {:source-id src-id
@@ -260,17 +239,14 @@
       (testing "get-relationships returns relationships for multiple memory IDs"
         (let [m1 (dh/insert-memory! conn {:memory/content "M1"
                                           :memory/layer :layer/fact
-                                          :memory/importance (float 0.5)
                                           :memory/source "test"
                                           :memory/namespace "default"})
               m2 (dh/insert-memory! conn {:memory/content "M2"
                                           :memory/layer :layer/fact
-                                          :memory/importance (float 0.5)
                                           :memory/source "test"
                                           :memory/namespace "default"})
               m3 (dh/insert-memory! conn {:memory/content "M3"
                                           :memory/layer :layer/fact
-                                          :memory/importance (float 0.5)
                                           :memory/source "test"
                                           :memory/namespace "default"})
               _r1  (dh/insert-relationship! conn {:source-id m1 :target-id m2 :type :related-to})
@@ -287,12 +263,10 @@
       (testing "get-relationships deduplicates when a relationship matches both source and target queries"
         (let [m1   (dh/insert-memory! conn {:memory/content "M1"
                                             :memory/layer :layer/fact
-                                            :memory/importance (float 0.5)
                                             :memory/source "test"
                                             :memory/namespace "default"})
               m2   (dh/insert-memory! conn {:memory/content "M2"
                                             :memory/layer :layer/fact
-                                            :memory/importance (float 0.5)
                                             :memory/source "test"
                                             :memory/namespace "default"})
               _r   (dh/insert-relationship! conn {:source-id m1 :target-id m2 :type :supports})
@@ -314,7 +288,6 @@
       (testing "get-relationships returns empty for IDs with no relationships"
         (let [m1 (dh/insert-memory! conn {:memory/content "M1"
                                           :memory/layer :layer/fact
-                                          :memory/importance (float 0.5)
                                           :memory/source "test"
                                           :memory/namespace "default"})]
           (is (empty? (dh/get-relationships conn [m1]))))))))
@@ -325,17 +298,14 @@
       (testing "returns all unique relationship types"
         (let [m1 (dh/insert-memory! conn {:memory/content "M1"
                                           :memory/layer :layer/fact
-                                          :memory/importance (float 0.5)
                                           :memory/source "test"
                                           :memory/namespace "default"})
               m2 (dh/insert-memory! conn {:memory/content "M2"
                                           :memory/layer :layer/fact
-                                          :memory/importance (float 0.5)
                                           :memory/source "test"
                                           :memory/namespace "default"})
               m3 (dh/insert-memory! conn {:memory/content "M3"
                                           :memory/layer :layer/fact
-                                          :memory/importance (float 0.5)
                                           :memory/source "test"
                                           :memory/namespace "default"})]
           ;; No relationships yet
@@ -356,7 +326,6 @@
         (let [ids (mapv (fn [i]
                           (dh/insert-memory! conn {:memory/content (str "batch-" i)
                                                    :memory/layer :layer/fact
-                                                   :memory/importance (float 0.5)
                                                    :memory/source "test"
                                                    :memory/namespace "default"}))
                         (range 3))
@@ -368,7 +337,6 @@
       (testing "returns minimal pull pattern (no full entity)"
         (let [id (dh/insert-memory! conn {:memory/content "minimal"
                                           :memory/layer :layer/fact
-                                          :memory/importance (float 0.5)
                                           :memory/source "test"
                                           :memory/namespace "default"})
               [mem] (dh/get-memories-batch conn [id])]
@@ -383,7 +351,6 @@
       (testing "deduplicates input IDs"
         (let [id (dh/insert-memory! conn {:memory/content "dup"
                                           :memory/layer :layer/fact
-                                          :memory/importance (float 0.5)
                                           :memory/source "test"
                                           :memory/namespace "default"})
               result (dh/get-memories-batch conn [id id id])]
@@ -456,7 +423,6 @@
       (let [_      (Thread/sleep 50)
             _      (dh/insert-memory! conn {:memory/content    "old memory"
                                             :memory/layer      :layer/fact
-                                            :memory/importance (float 0.5)
                                             :memory/source     "test"
                                             :memory/namespace  "default"})
             _      (Thread/sleep 50)
@@ -464,7 +430,6 @@
             _      (Thread/sleep 50)
             id2    (dh/insert-memory! conn {:memory/content    "new memory"
                                             :memory/layer      :layer/fact
-                                            :memory/importance (float 0.5)
                                             :memory/source     "test"
                                             :memory/namespace  "default"})]
         (testing "returns memories created after timestamp"
@@ -477,7 +442,6 @@
         (testing "namespace filtering"
           (dh/insert-memory! conn {:memory/content    "ns memory"
                                    :memory/layer      :layer/fact
-                                   :memory/importance (float 0.5)
                                    :memory/source     "test"
                                    :memory/namespace  "foo"})
           (let [result (dh/get-memories-since conn (java.util.Date. 0) :namespace "default")]
