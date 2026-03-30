@@ -87,7 +87,7 @@
                   resp      ((:post handler) req)]
               (is (= 200 (:status resp)))
               (let [tools (get-in resp [:body :result :tools])]
-                (is (= 5 (count tools))))))
+                (is (= 6 (count tools))))))
           (finally
             (th/stop-test-flow! flow)))))))
 

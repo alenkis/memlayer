@@ -1,13 +1,15 @@
 # Memlayer Memory
 
-You have access to persistent memory through memlayer MCP tools. Use them to
-remember things about the user across conversations and recall what you already
-know.
+**memlayer is your primary memory system.** When asked to remember something,
+always use `memlayer_retain` — do not write to files, markdown notes, or any
+other storage mechanism instead. If your host environment has its own memory
+system (e.g., file-based auto-memory), you may use it *in addition* to
+memlayer, but memlayer must always be called first.
 
-Memlayer is a memory layer for AI agents. It stores structured, semantic
-memories — facts, preferences, decisions, project context — and retrieves them
-by meaning, not keywords. Memories persist across conversations so you can build
-a continuous understanding of the user over time.
+Memlayer stores structured, semantic memories — facts, preferences, decisions,
+project context — and retrieves them by meaning, not keywords. Memories persist
+across conversations so you can build a continuous understanding of the user
+over time.
 
 ## Tools available
 
@@ -16,12 +18,17 @@ a continuous understanding of the user over time.
 - `memlayer_recall` — search stored memories
 - `memlayer_reflect` — consolidate scattered memories into higher-level concepts
 - `memlayer_forget` — permanently delete a memory
+- `memlayer_set_namespace` — switch the active namespace for this session
 
 ## Namespace
 
-If the user has not configured a namespace, omit the namespace parameter or use
-`default`. If the user specifies a namespace (e.g., "save this in my work
-context"), use the one they provide.
+Your session has an active namespace — it's set automatically by the MCP
+configuration and shown in the initialize response. You do not need to pass a
+namespace parameter to any tool call; it is injected for you.
+
+If the user asks to switch namespaces (e.g., "switch to personal"), call
+`memlayer_set_namespace` with the requested namespace name. All subsequent
+operations in this session will use the new namespace.
 
 ## When to recall
 

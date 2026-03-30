@@ -48,6 +48,12 @@
                                                          :required   ["content"]}
                                            :description "Array of items to retain"}}
                   :required   ["namespace" "items"]}}
+   {:name        "memlayer_set_namespace"
+    :description "Switch the active namespace for this session. All subsequent retain, recall, reflect, and forget operations will be scoped to this namespace."
+    :inputSchema {:type       "object"
+                  :properties {:namespace {:type        "string"
+                                           :description "The namespace to switch to"}}
+                  :required   ["namespace"]}}
    {:name        "memlayer_reflect"
     :description "Organize the knowledge graph: group orphan facts into concepts, concepts into domains, create summaries, discover relationships, and flag contradictions. Runs 4 phases: organize, summarize, connect, curate."
     :inputSchema {:type       "object"

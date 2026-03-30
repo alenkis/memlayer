@@ -34,7 +34,7 @@
 
 (defn prepare-context-proc
   "Factory: closes over deps so they stay out of process state."
-  [{:keys [db tuning correlation-map]}]
+  [{:keys [db tuning]}]
   (flow/process
    (fn
      ([] {:ins {:in nil} :outs {:out nil} :workload :io})

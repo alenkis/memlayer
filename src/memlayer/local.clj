@@ -5,13 +5,21 @@
   (:gen-class)
   (:require [memlayer.system :as system]
             [memlayer.server :as server]
+            [memlayer.middleware.idle-timeout :as idle]
             [memlayer.version :as version]
             [integrant.core :as ig]
             [ring.middleware.resource :as resource]
             [ring.util.response :as response]
             [clojure.tools.logging :as log])
   (:import [java.io File]
-           [java.util Date]))
+           [java.util Date]
+           [java.lang ProcessHandle]))
+
+(def ^:private memlayer-dir
+  (str (System/getProperty "user.home") "/.memlayer"))
+
+(def ^:private pid-file-path
+  (str memlayer-dir "/server.pid"))
 
 ;; GraalVM native-image serves resources via the "resource" URL protocol.
 ;; Ring only handles :file and :jar by default.
@@ -42,22 +50,48 @@
             (spa-handler request))
         resp))))
 
-;; Local server init-key — wraps router with static file + SPA fallback
+;; Local server init-key — wraps router with static file + SPA fallback + activity tracking
 (defmethod ig/init-key :memlayer/local-server [_ {:keys [handler config]}]
   (let [port    (get-in config [:server :port])
-        wrapped (wrap-static-and-spa handler)]
+        wrapped (-> handler
+                    idle/wrap-activity-tracking
+                    wrap-static-and-spa)]
     (server/start! wrapped port)))
 
 (defmethod ig/halt-key! :memlayer/local-server [_ stop-fn]
   (server/stop! stop-fn))
+
+(defn- write-pid-file! []
+  (let [pid (.pid (ProcessHandle/current))]
+    (spit pid-file-path (str pid))
+    (log/info "Wrote PID file:" pid-file-path "PID:" pid)))
+
+(defn- remove-pid-file! []
+  (let [f (File. ^String pid-file-path)]
+    (when (.exists f)
+      (.delete f)
+      (log/info "Removed PID file"))))
 
 (defn -main [& _args]
   (let [info @version/build-info]
     (log/info (str "memlayer local " (:version info)
                    " (" (:git-sha info) ")")))
   ;; Ensure parent data directory exists (datahike/proximum create their own subdirs)
-  (.mkdirs (File. (str (System/getProperty "user.home") "/.memlayer")))
-  (let [system (system/start-local-system!)]
+  (.mkdirs (File. ^String memlayer-dir))
+  (let [system     (system/start-local-system!)
+        timeout-ms (some-> (System/getenv "MEMLAYER_IDLE_TIMEOUT_MINUTES")
+                           parse-long
+                           (* 60 1000))
+        shutdown!  (fn []
+                     (log/info "Shutting down memlayer...")
+                     (remove-pid-file!)
+                     (system/stop-system! system)
+                     (System/exit 0))
+        stop-idle  (idle/start-idle-watcher! shutdown! timeout-ms)]
+    (write-pid-file!)
     (.addShutdownHook (Runtime/getRuntime)
-                      (Thread. ^Runnable #(system/stop-system! system)))
+                      (Thread. ^Runnable (fn []
+                                           (stop-idle)
+                                           (remove-pid-file!)
+                                           (system/stop-system! system))))
     (log/info "memlayer local is running")))

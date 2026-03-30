@@ -3,8 +3,8 @@
             [memlayer.mcp.tools :as tools]))
 
 (deftest tool-definitions-count
-  (testing "all five tools are defined"
-    (is (= 5 (count tools/tool-definitions)))))
+  (testing "all six tools are defined"
+    (is (= 6 (count tools/tool-definitions)))))
 
 (deftest recall-tool-has-advanced-params
   (testing "memlayer_recall includes temporal, layer, and graph params"

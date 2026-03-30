@@ -69,7 +69,7 @@
 
 (defn- handle-post [sessions flow deps request]
   (let [message (extract-message request)
-        ctx     {:flow flow :deps deps}]
+        ctx     {:flow flow :deps deps :active-namespace nil}]
     (cond
       ;; Parse error
       (or (nil? message) (:error message))

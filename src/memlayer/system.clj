@@ -193,23 +193,11 @@
       (assoc :memlayer/local-server {:handler (ig/ref :memlayer/router)
                                      :config  (ig/ref :memlayer/config)})))
 
-(def mcp-system-config
-  "Integrant config for MCP mode — core persistence + LLM providers only.
-   No HTTP router or server."
-  {:memlayer/config    {}
-   :persistence/datahike {:config (ig/ref :memlayer/config)}
-   :persistence/proximum {:config (ig/ref :memlayer/config)}
-   :provider/openai      {:config (ig/ref :memlayer/config)}
-   :provider/groq        {:config (ig/ref :memlayer/config)}})
-
 (defn start-system! []
   (ig/init system-config))
 
 (defn start-local-system! []
   (ig/init local-system-config))
-
-(defn start-mcp-system! []
-  (ig/init mcp-system-config))
 
 (defn stop-system! [system]
   (ig/halt! system))

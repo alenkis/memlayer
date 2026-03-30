@@ -39,26 +39,22 @@ export OPENAI_API_KEY=sk-...   # embeddings (~$0.02/1M tokens)
 export GROQ_API_KEY=gsk_...    # extraction & decisions (~$0.59/1M tokens)
 ```
 
-Or create a `.env` file in the directory you run memlayer from:
+Or create a `.env` file — memlayer automatically loads it from the current directory:
 
 ```
 OPENAI_API_KEY=sk-...
 GROQ_API_KEY=gsk_...
 ```
 
+You can also point to an env file explicitly:
+
+```bash
+memlayer --env-file ~/.memlayer/.env server
+```
+
 In terms of cost, a typical retain operation runs about $0.001 and recall is essentially free at ~$0.00001. With moderate usage (say 50 retains and 200 recalls a day), you'd be looking at roughly $1.50/month.
 
 ## Usage
-
-### Start the server
-
-```bash
-memlayer server    # HTTP API + dashboard on port 8090
-```
-
-Open http://localhost:8090 to see the dashboard where you can browse memories, visualize the knowledge graph, and test operations in the playground.
-
-To use a different port: `MEMLAYER_PORT=9090 memlayer server`
 
 ### Connect to Claude Code
 
@@ -66,7 +62,9 @@ To use a different port: `MEMLAYER_PORT=9090 memlayer server`
 claude mcp add memlayer -- memlayer
 ```
 
-This registers memlayer as an MCP server, giving your agent access to these tools:
+That's it. When Claude first calls a memlayer tool, the MCP process automatically starts the server in the background. You don't need to manage the server yourself.
+
+The dashboard is available at http://localhost:8090 while the server is running.
 
 | Tool | What it does |
 |------|-------------|
@@ -91,6 +89,52 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   }
 }
 ```
+
+### Namespaces
+
+Namespaces let you keep separate memory spaces — for different projects, clients, or contexts. By default, everything goes into the `default` namespace.
+
+**Set a namespace when registering the MCP server:**
+
+```bash
+claude mcp add memlayer-work -- memlayer --namespace work
+claude mcp add memlayer-personal -- memlayer --namespace personal
+```
+
+All tool calls from that session are automatically scoped to the configured namespace. The agent can't accidentally read or write to a different one.
+
+**Switch namespace mid-session:** Tell your agent *"switch to the personal namespace"* and it will call `memlayer_set_namespace`. All subsequent operations in that session use the new namespace.
+
+**Multiple agents, separate memories:** Register each agent with its own namespace. They share the same server and database, but their memories don't overlap.
+
+```bash
+# Claude Code gets "work" memories
+claude mcp add memlayer -- memlayer --namespace work
+
+# Codex gets "codex" memories
+# (in your Codex MCP config, pass --namespace codex)
+```
+
+### Start the server manually
+
+You can also start the server manually if you prefer:
+
+```bash
+memlayer server    # HTTP API + dashboard on port 8090
+```
+
+To use a different port: `MEMLAYER_PORT=9090 memlayer server`
+
+### Server lifecycle
+
+The server follows the Gradle/Watchman daemon pattern:
+
+- **Auto-start**: The first MCP client that connects starts the server automatically if it's not already running.
+- **Shared**: Multiple MCP clients (e.g., multiple Claude Code sessions) share the same server and database. The dashboard always shows up-to-date data.
+- **Idle timeout**: The server shuts itself down after 30 minutes of inactivity. Any API request or dashboard interaction resets the timer. Override with `MEMLAYER_IDLE_TIMEOUT_MINUTES`.
+- **Crash recovery**: If the server crashes, the next MCP tool call automatically restarts it.
+
+State is stored at `~/.memlayer/` — PID file, database, and vector index all live there.
 
 ### HTTP API
 

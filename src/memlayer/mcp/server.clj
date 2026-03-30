@@ -1,15 +1,13 @@
 (ns memlayer.mcp.server
-  "MCP server with stdio transport (JSON-RPC over stdin/stdout)."
+  "MCP server with stdio transport (JSON-RPC over stdin/stdout).
+   Thin client that forwards tool calls to the memlayer HTTP server."
   (:gen-class)
   (:require [memlayer.version :as version]
             [memlayer.mcp.protocol :as proto]
             [memlayer.mcp.tools :as tools]
             [memlayer.mcp.resources :as resources]
-            [memlayer.operations.flow.retention-flow :as retention-flow]
-            [memlayer.operations.recall :as recall]
-            [memlayer.operations.forget :as forget]
-            [memlayer.operations.reflect :as reflect]
-            [memlayer.config :as config]
+            [memlayer.mcp.client :as client]
+            [memlayer.mcp.lifecycle :as lifecycle]
             [memlayer.json :as json]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -24,15 +22,23 @@
   {:tools     {}
    :resources {}})
 
+(def ^:private default-port 8090)
+
 ;; -- Method handlers --
 
 (defmulti handle-method (fn [method _params _ctx] method))
 
-(defmethod handle-method "initialize" [_ _params _ctx]
-  {:protocolVersion "2025-03-26"
-   :serverInfo      server-info
-   :capabilities    capabilities
-   :instructions    (resources/instructions-text)})
+(defmethod handle-method "initialize" [_ _params {:keys [active-namespace]}]
+  (let [ns-name (when active-namespace @active-namespace)]
+    {:protocolVersion "2025-03-26"
+     :serverInfo      server-info
+     :capabilities    capabilities
+     :instructions    (if ns-name
+                        (str (resources/instructions-text)
+                             "\n\n## Active namespace\n\nYour current namespace is `"
+                             ns-name "`. All memory operations are scoped to this namespace."
+                             " To switch, call the `memlayer_set_namespace` tool.")
+                        (resources/instructions-text))}))
 
 (defmethod handle-method "notifications/initialized" [_ _ _]
   nil) ;; notification, no response
@@ -46,71 +52,70 @@
 (defmethod handle-method "resources/read" [_ params _ctx]
   (resources/read-resource (:uri params)))
 
-(defmethod handle-method "tools/call" [_ params {:keys [flow deps]}]
+(defn- wrap-mcp-content
+  "Wrap a result map as MCP tool content."
+  [result]
+  {:content [{:type "text"
+              :text (j/write-value-as-string result json/mapper)}]})
+
+(defmethod handle-method "tools/call" [_ params {:keys [base-url port active-namespace]}]
   (let [tool-name (:name params)
-        arguments (:arguments params)]
+        arguments (:arguments params)
+        ns-name   (if active-namespace @active-namespace (:namespace arguments))
+        ;; Try the call, retry once if server went away
+        call-with-retry
+        (fn [f]
+          (try
+            (f base-url)
+            (catch Exception e
+              (log/warn "Tool call failed, attempting server restart:" (.getMessage e))
+              (if-let [new-url (lifecycle/try-restart-server! port)]
+                (f new-url)
+                (throw (ex-info "Server unavailable" {:tool tool-name}))))))]
     (case tool-name
+      "memlayer_set_namespace"
+      (let [new-ns (:namespace arguments)]
+        (if active-namespace
+          (do (reset! active-namespace new-ns)
+              (log/info "Namespace changed to:" new-ns)
+              (wrap-mcp-content {:namespace new-ns
+                                 :message   (str "Switched to namespace \"" new-ns "\". All operations now scoped to this namespace.")}))
+          (throw (ex-info "set_namespace is only available in MCP stdio mode" {}))))
+
       "memlayer_retain"
-      (let [result (retention-flow/submit! flow
-                                           {:items     [{:content (:content arguments)
-                                                         :source  (:source arguments)}]
-                                            :namespace (:namespace arguments)
-                                            :source    (:source arguments)})]
-        {:content [{:type "text"
-                    :text (j/write-value-as-string
-                           {:memory-ids (mapv str (:memory-ids result))
-                            :decisions  (mapv (fn [d]
-                                                (cond-> {:type    (:type d)
-                                                         :content (:content d)}
-                                                  (:memory-id d) (assoc :memory-id (str (:memory-id d)))))
-                                              (:decisions result))}
-                           json/mapper)}]})
+      (wrap-mcp-content
+       (call-with-retry
+        #(client/retain! % {:content   (:content arguments)
+                            :source    (:source arguments)
+                            :namespace ns-name})))
 
       "memlayer_batch_retain"
-      (let [result         (retention-flow/submit! flow
-                                                   {:items     (:items arguments)
-                                                    :namespace (:namespace arguments)})
-            reflect-result (when (and result (seq (:decisions result)))
-                             (try
-                               (reflect/reflect! deps {:dry-run false :namespace (:namespace arguments)})
-                               (catch Exception e
-                                 (log/warn "Post-batch reflect failed:" (.getMessage e))
-                                 nil)))]
-        {:content [{:type "text"
-                    :text (j/write-value-as-string
-                           (cond-> {:memory-ids (mapv str (:memory-ids result))
-                                    :decisions  (mapv (fn [d]
-                                                        (cond-> {:type    (:type d)
-                                                                 :content (:content d)}
-                                                          (:memory-id d) (assoc :memory-id (str (:memory-id d)))))
-                                                      (:decisions result))
-                                    :usage      (:usage result)}
-                             reflect-result (assoc :reflect reflect-result))
-                           json/mapper)}]})
+      (wrap-mcp-content
+       (call-with-retry
+        #(client/batch-retain! % {:namespace ns-name
+                                  :items     (:items arguments)})))
 
       "memlayer_recall"
-      (let [result (recall/recall! deps {:query        (:query arguments)
-                                         :namespace    (:namespace arguments)
-                                         :limit        (:limit arguments)
-                                         :as-of        (:as-of arguments)
-                                         :layer        (:layer arguments)
-                                         :expand-graph (:expand-graph arguments)})]
-        {:content [{:type "text"
-                    :text (j/write-value-as-string result json/mapper)}]})
+      (wrap-mcp-content
+       (call-with-retry
+        #(client/recall! % {:query        (:query arguments)
+                            :namespace    ns-name
+                            :limit        (:limit arguments)
+                            :as-of        (:as-of arguments)
+                            :layer        (:layer arguments)
+                            :expand-graph (:expand-graph arguments)})))
 
       "memlayer_forget"
-      (let [result (forget/forget! deps {:memory-id (parse-uuid (:memory-id arguments))})]
-        {:content [{:type "text"
-                    :text (j/write-value-as-string result json/mapper)}]})
+      (wrap-mcp-content
+       (call-with-retry
+        #(client/forget! % {:memory-id (:memory-id arguments)})))
 
       "memlayer_reflect"
-      (let [result (reflect/reflect! deps {:dry-run   (:dry-run arguments)
-                                           :query     (:query arguments)
-                                           :threshold (:threshold arguments)
-                                           :namespace (:namespace arguments)
-                                           :phases    (:phases arguments)})]
-        {:content [{:type "text"
-                    :text (j/write-value-as-string result json/mapper)}]})
+      (wrap-mcp-content
+       (call-with-retry
+        #(client/reflect! % {:dry-run   (:dry-run arguments)
+                             :namespace ns-name
+                             :phases    (:phases arguments)})))
 
       ;; Unknown tool
       (throw (ex-info "Unknown tool" {:tool-name tool-name})))))
@@ -170,21 +175,12 @@
 (defn -main [& _args]
   (let [info @version/build-info]
     (log/info (str "memlayer " (:version info) " (" (:git-sha info) ") built " (:built-at info))))
-  (log/info "Starting memlayer MCP server (stdio)")
-  (let [start-mcp-system! (requiring-resolve 'memlayer.system/start-mcp-system!)
-        stop-system!      (requiring-resolve 'memlayer.system/stop-system!)
-        system            (start-mcp-system!)
-        cfg               (config/load-config)
-        db                (:persistence/datahike system)
-        deps              {:db                 db
-                           :vector-index       (:persistence/proximum system)
-                           :embedding-provider (:provider/openai system)
-                           :chat-provider      (:provider/groq system)
-                           :prompts            (:prompts cfg)
-                           :tuning             (:tuning cfg)}
-        flow              (retention-flow/start-standalone! deps cfg)]
-    (.addShutdownHook (Runtime/getRuntime)
-                      (Thread. ^Runnable (fn []
-                                           (retention-flow/stop-standalone! flow)
-                                           (stop-system! system))))
-    (run-stdio! {:flow flow :deps deps})))
+  (log/info "Starting memlayer MCP client (stdio)")
+  (let [port             (or (some-> (System/getenv "MEMLAYER_PORT") parse-long) default-port)
+        namespace        (or (System/getProperty "memlayer.namespace") "default")
+        active-namespace (atom namespace)
+        base-url         (lifecycle/ensure-server! port)]
+    (log/info "Connected to memlayer server at" base-url "namespace:" namespace)
+    (run-stdio! {:base-url         base-url
+                 :port             port
+                 :active-namespace active-namespace})))
