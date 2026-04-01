@@ -33,15 +33,15 @@
             [clojure.tools.logging :as log]))
 
 (defmethod ig/init-key :memlayer/config [_ {:keys [path]}]
-  (log/info "Loading configuration")
+  (log/debug "Loading configuration")
   (if path
     (config/load-config path)
     (config/load-config)))
 
 (defmethod ig/init-key :persistence/datahike [_ {:keys [config]}]
   (let [{:keys [backend path]} (:datahike config)]
-    (log/info (str "Initializing datahike [backend=" (name backend)
-                   (when (= backend :file) (str " path=" path)) "]")))
+    (log/debug (str "Initializing datahike [backend=" (name backend)
+                    (when (= backend :file) (str " path=" path)) "]")))
   (let [conn (datahike/create-connection! (:datahike config))]
     ;; Transact additional schemas with raw conn (lifecycle)
     (usage/transact-schema! conn)
@@ -50,14 +50,14 @@
     (datahike/->DatahikeEntityStore conn)))
 
 (defmethod ig/halt-key! :persistence/datahike [_ store]
-  (log/info "Releasing datahike connection")
+  (log/debug "Releasing datahike connection")
   (d/release (:conn store)))
 
 (defmethod ig/init-key :persistence/proximum [_ {:keys [config]}]
   (let [{:keys [backend path]} (:proximum config)
         prox-config (:proximum config)]
-    (log/info (str "Initializing proximum [backend=" (name backend)
-                   (when (= backend :file) (str " path=" path)) "]"))
+    (log/debug (str "Initializing proximum [backend=" (name backend)
+                    (when (= backend :file) (str " path=" path)) "]"))
     (atom (proximum/->ProximumVectorStore
            (proximum/create-index! prox-config) prox-config))))
 
@@ -68,7 +68,7 @@
     (when (str/blank? (:api-key openai-config))
       (throw (ex-info "OPENAI_API_KEY not set. Set it in .env or as environment variable."
                       {:component :provider/openai})))
-    (log/info "Initializing OpenAI client")
+    (log/debug "Initializing OpenAI client")
     (openai/create-client openai-config)))
 
 (defmethod ig/init-key :provider/groq [_ {:keys [config]}]
@@ -76,13 +76,13 @@
     (when (str/blank? (:api-key groq-config))
       (throw (ex-info "GROQ_API_KEY not set. Set it in .env or as environment variable."
                       {:component :provider/groq})))
-    (log/info "Initializing Groq client")
+    (log/debug "Initializing Groq client")
     (groq/create-client groq-config)))
 
 ;; -- Deps (shared by handlers that delegate to operation functions) --
 
 (defmethod ig/init-key :memlayer/deps [_ {:keys [db vector openai groq config]}]
-  (log/info "Building deps")
+  (log/debug "Building deps")
   {:db                 db
    :vector-index       vector
    :embedding-provider openai
@@ -96,7 +96,7 @@
   [_ {:keys [retain recall forget evict ingest batch-retain reflect
              ws-ingest admin namespaces memories stats dashboard
              mcp retention-flow config]}]
-  (log/info "Creating router")
+  (log/debug "Creating router")
   (router/create-router {:retain         retain
                          :recall         recall
                          :forget         forget

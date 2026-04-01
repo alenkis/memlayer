@@ -31,7 +31,6 @@
   ring/ring-core                   {:mvn/version "1.12.2"}
   ;; Logging (runtime implementation)
   ch.qos.logback/logback-classic   {:mvn/version "1.5.6"}
-  net.logstash.logback/logstash-logback-encoder {:mvn/version "8.0"}
   ;; Configuration
   aero/aero                        {:mvn/version "1.1.6"}}
 

@@ -13,5 +13,5 @@
   "Stop the HTTP server."
   [server]
   (when server
-    (log/info "Stopping HTTP server")
+    (log/debug "Stopping HTTP server")
     (server :timeout 100)))

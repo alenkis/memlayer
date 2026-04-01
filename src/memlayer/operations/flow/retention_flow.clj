@@ -122,7 +122,7 @@
 
 (defmethod ig/init-key :memlayer/retention-flow
   [_ {:keys [deps config]}]
-  (log/info "Starting retention flow")
+  (log/debug "Starting retention flow")
   (let [flow-config    (:flow config)
         cost-config    (:cost config)
         correlation-map (corr/create-correlation-map)
@@ -144,7 +144,7 @@
 
 (defmethod ig/halt-key! :memlayer/retention-flow
   [_ {:keys [graph correlation-map ^ExecutorService io-exec]}]
-  (log/info "Stopping retention flow")
+  (log/debug "Stopping retention flow")
   (flow/stop graph)
   (corr/drain! correlation-map)
   (when io-exec (.shutdown io-exec)))

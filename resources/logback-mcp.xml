@@ -1,12 +1,7 @@
 <configuration>
   <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
     <target>System.err</target>
-    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-      <includeMdcKeyName>traceId</includeMdcKeyName>
-      <includeMdcKeyName>userId</includeMdcKeyName>
-      <includeMdcKeyName>method</includeMdcKeyName>
-      <includeMdcKeyName>uri</includeMdcKeyName>
-    </encoder>
+    <encoder class="ch.qos.logback.classic.encoder.JsonEncoder"/>
   </appender>
 
   <logger name="datahike" level="WARN"/>

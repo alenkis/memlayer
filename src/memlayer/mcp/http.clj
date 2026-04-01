@@ -126,7 +126,7 @@
 ;; -- Integrant --
 
 (defmethod ig/init-key :handler/mcp [_ {:keys [flow deps]}]
-  (log/info "Creating MCP HTTP handler")
+  (log/debug "Creating MCP HTTP handler")
   (let [sessions (atom {})]
     {:post     (fn [request] (handle-post sessions flow deps request))
      :delete   (fn [request] (handle-delete sessions request))
