@@ -8,6 +8,17 @@
            [java.nio.file Files Path]
            [java.util UUID]))
 
+(defn- delete-directory-recursive!
+  "Recursively delete `dir-path` and everything inside it.
+   Properly closes the Files/walk stream to avoid resource leaks."
+  [^Path dir-path]
+  (let [stream (Files/walk dir-path (make-array java.nio.file.FileVisitOption 0))]
+    (try
+      (doseq [f (reverse (sort (iterator-seq (.iterator stream))))]
+        (Files/deleteIfExists ^Path f))
+      (finally
+        (.close stream)))))
+
 (defn create-index!
   "Create or load a proximum HNSW index.
    Supports :backend :memory (default, for tests) or :backend :file (persistent).
@@ -26,14 +37,9 @@
         (log/info "Loading existing proximum index" {:path path})
         (prox/load store-config)
         (catch Exception e
-          (log/warn "Failed to load existing index, recreating" {:path path :error (.getMessage e)})
-          (let [dir-path (.toPath (File. ^String path))]
-            (doseq [f (reverse (sort (iterator-seq (.iterator (Files/walk dir-path (make-array java.nio.file.FileVisitOption 0))))))]
-              (Files/deleteIfExists ^Path f)))
-          (prox/create-index {:type         :hnsw
-                              :dim          dim
-                              :store-config store-config
-                              :capacity     capacity})))
+          (throw (ex-info "Failed to load proximum index — manual intervention required"
+                          {:path path :error (.getMessage e)}
+                          e))))
       (do
         (log/info "Creating proximum index" {:dim dim :capacity capacity :backend backend})
         (prox/create-index {:type         :hnsw
@@ -71,9 +77,7 @@
    When a file-backed path is provided, deletes the old index files first."
   [{:keys [dim capacity backend path] :or {dim 1536 capacity 100000}}]
   (when (and path (.exists (File. ^String path)))
-    (let [dir-path (.toPath (File. ^String path))]
-      (doseq [f (reverse (sort (iterator-seq (.iterator (Files/walk dir-path (make-array java.nio.file.FileVisitOption 0))))))]
-        (Files/deleteIfExists ^Path f)))
+    (delete-directory-recursive! (.toPath (File. ^String path)))
     (log/info "Cleared vector index files" {:path path}))
   (create-index! (cond-> {:dim dim :capacity capacity}
                    (and backend path) (assoc :backend backend :path path))))
