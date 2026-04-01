@@ -269,21 +269,27 @@
   [store]
   (count-all-memories store))
 
+(defn- count-by-layer-in-ns [conn ns-name]
+  (d/q '[:find ?layer (count ?e)
+         :in $ ?ns
+         :where
+         [?e :memory/layer ?layer]
+         [?e :memory/namespace ?ns]]
+       @conn ns-name))
+
+(defn- count-by-layer-all [conn]
+  (d/q '[:find ?layer (count ?e)
+         :where
+         [?e :memory/layer ?layer]]
+       @conn))
+
 (defn count-by-layer
   "Count memories grouped by layer, optionally filtered by namespace."
   [store & {:keys [namespace]}]
   (let [conn (:conn store)
         results (if namespace
-                  (d/q '[:find ?layer (count ?e)
-                         :in $ ?ns
-                         :where
-                         [?e :memory/layer ?layer]
-                         [?e :memory/namespace ?ns]]
-                       @conn namespace)
-                  (d/q '[:find ?layer (count ?e)
-                         :where
-                         [?e :memory/layer ?layer]]
-                       @conn))]
+                  (count-by-layer-in-ns conn namespace)
+                  (count-by-layer-all conn))]
     (into {} (map (fn [[layer cnt]] [(name layer) cnt])) results)))
 
 (defn get-children
@@ -434,69 +440,97 @@
       (d/transact conn (mapv (fn [eid] [:db/retractEntity eid]) eids)))
     (count eids)))
 
+(defn- facts-in-ns [conn ns-name]
+  (d/q '[:find [(pull ?e [*]) ...]
+         :in $ ?ns
+         :where
+         [?e :memory/layer :layer/fact]
+         [?e :memory/namespace ?ns]
+         (not [?e :memory/parent-id _])]
+       @conn ns-name))
+
+(defn- facts-all [conn]
+  (d/q '[:find [(pull ?e [*]) ...]
+         :where
+         [?e :memory/layer :layer/fact]
+         (not [?e :memory/parent-id _])]
+       @conn))
+
 (defn get-orphan-facts
   "Find fact-layer memories with no parent-id set.
    When namespace is provided, only returns facts in that namespace."
   [store & {:keys [namespace]}]
-  (let [conn (:conn store)
-        all-facts (if namespace
-                    (d/q '[:find [(pull ?e [*]) ...]
-                           :in $ ?ns
-                           :where
-                           [?e :memory/layer :layer/fact]
-                           [?e :memory/namespace ?ns]]
-                         @conn namespace)
-                    (d/q '[:find [(pull ?e [*]) ...]
-                           :where [?e :memory/layer :layer/fact]]
-                         @conn))]
-    (filterv #(nil? (:memory/parent-id %)) all-facts)))
+  (let [conn (:conn store)]
+    (if namespace
+      (facts-in-ns conn namespace)
+      (facts-all conn))))
+
+(defn- concepts-in-ns [conn ns-name]
+  (d/q '[:find [(pull ?e [*]) ...]
+         :in $ ?ns
+         :where
+         [?e :memory/layer :layer/concept]
+         [?e :memory/namespace ?ns]]
+       @conn ns-name))
+
+(defn- concepts-all [conn]
+  (d/q '[:find [(pull ?e [*]) ...]
+         :where [?e :memory/layer :layer/concept]]
+       @conn))
 
 (defn get-concepts
   "Fetch concept-layer memories, optionally scoped by namespace."
   [store & {:keys [namespace]}]
   (let [conn (:conn store)]
     (if namespace
-      (d/q '[:find [(pull ?e [*]) ...]
-             :in $ ?ns
-             :where
-             [?e :memory/layer :layer/concept]
-             [?e :memory/namespace ?ns]]
-           @conn namespace)
-      (d/q '[:find [(pull ?e [*]) ...]
-             :where [?e :memory/layer :layer/concept]]
-           @conn))))
+      (concepts-in-ns conn namespace)
+      (concepts-all conn))))
+
+(defn- domains-in-ns [conn ns-name]
+  (d/q '[:find [(pull ?e [*]) ...]
+         :in $ ?ns
+         :where
+         [?e :memory/layer :layer/domain]
+         [?e :memory/namespace ?ns]]
+       @conn ns-name))
+
+(defn- domains-all [conn]
+  (d/q '[:find [(pull ?e [*]) ...]
+         :where [?e :memory/layer :layer/domain]]
+       @conn))
 
 (defn get-domains
   "Fetch domain-layer memories, optionally scoped by namespace."
   [store & {:keys [namespace]}]
   (let [conn (:conn store)]
     (if namespace
-      (d/q '[:find [(pull ?e [*]) ...]
-             :in $ ?ns
-             :where
-             [?e :memory/layer :layer/domain]
-             [?e :memory/namespace ?ns]]
-           @conn namespace)
-      (d/q '[:find [(pull ?e [*]) ...]
-             :where [?e :memory/layer :layer/domain]]
-           @conn))))
+      (domains-in-ns conn namespace)
+      (domains-all conn))))
+
+(defn- orphan-concepts-in-ns [conn ns-name]
+  (d/q '[:find [(pull ?e [*]) ...]
+         :in $ ?ns
+         :where
+         [?e :memory/layer :layer/concept]
+         [?e :memory/namespace ?ns]
+         (not [?e :memory/parent-id _])]
+       @conn ns-name))
+
+(defn- orphan-concepts-all [conn]
+  (d/q '[:find [(pull ?e [*]) ...]
+         :where
+         [?e :memory/layer :layer/concept]
+         (not [?e :memory/parent-id _])]
+       @conn))
 
 (defn get-orphan-concepts
   "Find concept-layer memories with no parent-id set.
    When namespace is provided, only returns concepts in that namespace."
   [store & {:keys [namespace]}]
-  (let [conn (:conn store)
-        all-concepts (if namespace
-                       (d/q '[:find [(pull ?e [*]) ...]
-                              :in $ ?ns
-                              :where
-                              [?e :memory/layer :layer/concept]
-                              [?e :memory/namespace ?ns]]
-                            @conn namespace)
-                       (d/q '[:find [(pull ?e [*]) ...]
-                              :where [?e :memory/layer :layer/concept]]
-                            @conn))]
-    (filterv #(nil? (:memory/parent-id %)) all-concepts)))
+  (let [conn (:conn store)]
+    (if namespace
+      (orphan-concepts-in-ns conn namespace)
+      (orphan-concepts-all conn))))
 
 (defn get-siblings
   "Fetch other children of the same parent, excluding the given memory."

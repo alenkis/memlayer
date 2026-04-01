@@ -30,7 +30,7 @@
             [datahike.api :as d]
             [clojure.tools.logging :as log]))
 
-;; Use a fixed port for e2e tests
+;; Use a fixed port for e2e tests, overridable via env var for parallel workspaces
 (def ^:private e2e-port
   (Long/parseLong (or (System/getenv "MEMLAYER_TEST_PORT") "18080")))
 
