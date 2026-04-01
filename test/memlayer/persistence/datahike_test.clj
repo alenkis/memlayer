@@ -170,7 +170,7 @@
                                      :memory/layer :layer/fact
                                      :memory/source "test"
                                      :memory/namespace "default"
-                                     :memory/parent-id parent-id}))
+                                     :memory/parent [:memory/id parent-id]}))
           (is (= 5 (count (dh/get-children conn parent-id))))
           (is (= 2 (count (dh/get-children conn parent-id :limit 2))))
           (is (= 3 (count (dh/get-children conn parent-id :offset 2))))
@@ -229,8 +229,8 @@
           (is (uuid? rel-id))
           (let [rels (dh/get-relationships conn [src-id])]
             (is (= 1 (count rels)))
-            (is (= src-id (:relationship/source-id (first rels))))
-            (is (= tgt-id (:relationship/target-id (first rels))))
+            (is (= src-id (get-in (first rels) [:relationship/source :memory/id])))
+            (is (= tgt-id (get-in (first rels) [:relationship/target :memory/id])))
             (is (= :elaborates (:relationship/type (first rels))))))))))
 
 (deftest get-relationships-multiple-ids
@@ -368,15 +368,15 @@
                                           :memory/namespace "default"})
               s1 (dh/insert-memory! conn {:memory/content "summary of concept-1"
                                           :memory/layer :layer/summary
-                                          :memory/parent-id p1
+                                          :memory/parent [:memory/id p1]
                                           :memory/namespace "default"})
               s2 (dh/insert-memory! conn {:memory/content "summary of concept-2"
                                           :memory/layer :layer/summary
-                                          :memory/parent-id p2
+                                          :memory/parent [:memory/id p2]
                                           :memory/namespace "default"})
               _  (dh/insert-memory! conn {:memory/content "fact under concept-1"
                                           :memory/layer :layer/fact
-                                          :memory/parent-id p1
+                                          :memory/parent [:memory/id p1]
                                           :memory/namespace "default"})
               result (dh/get-summaries-for-batch conn [p1 p2])]
           (is (= 2 (count result)))
@@ -399,15 +399,15 @@
                                           :memory/namespace "default"})
               c1 (dh/insert-memory! conn {:memory/content "child-of-1a"
                                           :memory/layer :layer/fact
-                                          :memory/parent-id p1
+                                          :memory/parent [:memory/id p1]
                                           :memory/namespace "default"})
               c2 (dh/insert-memory! conn {:memory/content "child-of-1b"
                                           :memory/layer :layer/fact
-                                          :memory/parent-id p1
+                                          :memory/parent [:memory/id p1]
                                           :memory/namespace "default"})
               c3 (dh/insert-memory! conn {:memory/content "child-of-2"
                                           :memory/layer :layer/fact
-                                          :memory/parent-id p2
+                                          :memory/parent [:memory/id p2]
                                           :memory/namespace "default"})
               result (dh/get-children-of-parents-batch conn [p1 p2])]
           (is (= 3 (count result)))

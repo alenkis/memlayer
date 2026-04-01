@@ -95,7 +95,7 @@
                            :memory/layer      :layer/fact
                            :memory/source     "test"
                            :memory/namespace  namespace
-                           :memory/parent-id  parent-id}))
+                           :memory/parent  [:memory/id parent-id]}))
 
 (defn- insert-concept! [conn content namespace]
   (dh/insert-memory! conn {:memory/content    content
@@ -159,9 +159,9 @@
               _    (reflect/organize! deps {:namespace "test-ns"})
               fact1 (dh/get-memory conn f1)
               fact2 (dh/get-memory conn f2)]
-          (is (some? (:memory/parent-id fact1)) "Fact 1 should have a parent")
-          (is (some? (:memory/parent-id fact2)) "Fact 2 should have a parent")
-          (is (= (:memory/parent-id fact1) (:memory/parent-id fact2))
+          (is (some? (dh/parent-id fact1)) "Fact 1 should have a parent")
+          (is (some? (dh/parent-id fact2)) "Fact 2 should have a parent")
+          (is (= (dh/parent-id fact1) (dh/parent-id fact2))
               "Both facts should share the same parent concept"))))))
 
 (deftest organize-context-aware-reuses-existing
@@ -176,7 +176,7 @@
           (is (= 0 (:concepts-created result)))
           (is (= 1 (:concepts-reused result)))
           (let [fact (dh/get-memory conn fact-id)]
-            (is (= concept-id (:memory/parent-id fact)))))))))
+            (is (= concept-id (dh/parent-id fact)))))))))
 
 (deftest organize-multiple-groups-per-batch
   (th/with-datahike
@@ -191,9 +191,9 @@
           ;; Verify each fact has a different parent concept
           (let [fact1 (dh/get-memory conn f1)
                 fact2 (dh/get-memory conn f2)]
-            (is (some? (:memory/parent-id fact1)))
-            (is (some? (:memory/parent-id fact2)))
-            (is (not= (:memory/parent-id fact1) (:memory/parent-id fact2)))))))))
+            (is (some? (dh/parent-id fact1)))
+            (is (some? (dh/parent-id fact2)))
+            (is (not= (dh/parent-id fact1) (dh/parent-id fact2)))))))))
 
 (deftest organize-stores-concept-embedding
   (th/with-datahike
@@ -276,7 +276,7 @@
           ;; Both concepts should be children of the domain
           (let [domain-id (:memory/id (first domains))]
             (doseq [c concepts]
-              (is (= domain-id (:memory/parent-id c))
+              (is (= domain-id (dh/parent-id c))
                   (str "Concept '" (:memory/content c) "' should be child of domain")))))))))
 
 ;; ---------------------------------------------------------------------------
@@ -371,8 +371,8 @@
               _     (reflect/reflect! deps {:namespace "test-ns" :dry-run true})
               fact1 (dh/get-memory conn f1)
               fact2 (dh/get-memory conn f2)]
-          (is (nil? (:memory/parent-id fact1)))
-          (is (nil? (:memory/parent-id fact2))))))))
+          (is (nil? (dh/parent-id fact1)))
+          (is (nil? (dh/parent-id fact2))))))))
 
 (deftest reflect-phases-only-organize
   (th/with-datahike
@@ -513,7 +513,7 @@
                                                  :memory/layer     :layer/concept
                                                  :memory/source    "test"
                                                  :memory/namespace "test-ns"
-                                                 :memory/parent-id domain-id})
+                                                 :memory/parent [:memory/id domain-id]})
               _orphan   (insert-concept! conn "Orphan Concept" "test-ns")]
           (is (= 1 (count (dh/get-orphan-concepts conn :namespace "test-ns")))))))))
 
@@ -545,8 +545,8 @@
           (let [rels (dh/get-relationships-for-memory conn m1)]
             (is (= 1 (count rels)))
             (let [r (first rels)]
-              (is (= m1 (:relationship/source-id r)))
-              (is (= m2 (:relationship/target-id r)))
+              (is (= m1 (get-in r [:relationship/source :memory/id])))
+              (is (= m2 (get-in r [:relationship/target :memory/id])))
               (is (= :relates-to (:relationship/type r)))
               (is (= "Both deal with data structures" (:relationship/description r))))))))))
 
@@ -570,7 +570,7 @@
                                                   :memory/layer     :layer/summary
                                                   :memory/source    "reflect"
                                                   :memory/namespace "test-ns"
-                                                  :memory/parent-id concept-id})
+                                                  :memory/parent [:memory/id concept-id]})
               summaries (dh/get-summaries-for conn concept-id)]
           (is (= 1 (count summaries)))
           (is (= :layer/summary (:memory/layer (first summaries)))))))))
@@ -623,11 +623,11 @@
               _f1        (dh/insert-memory! conn {:memory/content    "Clojure uses immutable data"
                                                   :memory/layer      :layer/fact
                                                   :memory/namespace  "test"
-                                                  :memory/parent-id  concept-id})
+                                                  :memory/parent  [:memory/id concept-id]})
               _f2        (dh/insert-memory! conn {:memory/content    "Haskell enforces purity"
                                                   :memory/layer      :layer/fact
                                                   :memory/namespace  "test"
-                                                  :memory/parent-id  concept-id})
+                                                  :memory/parent  [:memory/id concept-id]})
               result     (reflect/summarize! deps {:namespace "test"})]
           (is (= 1 (:summaries-created result)))
           (let [summaries (dh/get-summaries-for conn concept-id)]
@@ -646,11 +646,11 @@
               _f1        (dh/insert-memory! conn {:memory/content    "Fact one"
                                                   :memory/layer      :layer/fact
                                                   :memory/namespace  "test"
-                                                  :memory/parent-id  concept-id})
+                                                  :memory/parent  [:memory/id concept-id]})
               _summary   (dh/insert-memory! conn {:memory/content   "Existing summary"
                                                   :memory/layer     :layer/summary
                                                   :memory/namespace "test"
-                                                  :memory/parent-id concept-id})
+                                                  :memory/parent [:memory/id concept-id]})
               result     (reflect/summarize! deps {:namespace "test"})]
           (is (= 0 (:summaries-created result)))
           (is (= 1 (count (dh/get-summaries-for conn concept-id)))))))))
@@ -677,7 +677,7 @@
               _c1       (dh/insert-memory! conn {:memory/content   "FP Concept"
                                                  :memory/layer     :layer/concept
                                                  :memory/namespace "test"
-                                                 :memory/parent-id domain-id})
+                                                 :memory/parent [:memory/id domain-id]})
               result    (reflect/summarize! deps {:namespace "test"})]
           ;; Both the domain and the concept need summaries, but concept has no children
           ;; so only the domain gets one (it has the concept as a child)
@@ -695,7 +695,7 @@
               _f1        (dh/insert-memory! conn {:memory/content    "Fact one"
                                                   :memory/layer      :layer/fact
                                                   :memory/namespace  "test"
-                                                  :memory/parent-id  concept-id})
+                                                  :memory/parent  [:memory/id concept-id]})
               result1    (reflect/summarize! deps {:namespace "test"})
               result2    (reflect/summarize! deps {:namespace "test"})]
           (is (= 1 (:summaries-created result1)))
@@ -845,11 +845,11 @@
         f1-id      (dh/insert-memory! conn {:memory/content    "The sky is blue"
                                             :memory/layer      :layer/fact
                                             :memory/namespace  "test"
-                                            :memory/parent-id  concept-id})
+                                            :memory/parent  [:memory/id concept-id]})
         f2-id      (dh/insert-memory! conn {:memory/content    "The sky is green"
                                             :memory/layer      :layer/fact
                                             :memory/namespace  "test"
-                                            :memory/parent-id  concept-id})]
+                                            :memory/parent  [:memory/id concept-id]})]
     (swap! vector-index protocols/upsert! (str f1-id) (embed-fn "The sky is blue"))
     (swap! vector-index protocols/upsert! (str f2-id) (embed-fn "The sky is green"))
     {:concept-id concept-id :fact-ids [f1-id f2-id]}))
@@ -865,8 +865,8 @@
           (let [[f1-id f2-id] (:fact-ids kg)
                 f1 (dh/get-memory conn f1-id)
                 f2 (dh/get-memory conn f2-id)]
-            (is (contains? (set (:memory/contradiction-ids f1)) f2-id))
-            (is (contains? (set (:memory/contradiction-ids f2)) f1-id))))))))
+            (is (contains? (set (map :memory/id (:memory/contradictions f1))) f2-id))
+            (is (contains? (set (map :memory/id (:memory/contradictions f2))) f1-id))))))))
 
 (deftest curate-skips-already-flagged
   (th/with-datahike
@@ -876,8 +876,8 @@
               kg     (setup-concept-with-facts! conn deps)
               [f1-id f2-id] (:fact-ids kg)]
           ;; Manually set contradiction
-          (dh/update-memory! conn f1-id {:memory/contradiction-ids f2-id})
-          (dh/update-memory! conn f2-id {:memory/contradiction-ids f1-id})
+          (dh/update-memory! conn f1-id {:memory/contradictions [:memory/id f2-id]})
+          (dh/update-memory! conn f2-id {:memory/contradictions [:memory/id f1-id]})
           (let [result (reflect/curate! deps {:namespace "test"})]
             (is (= 0 (:contradictions-found result)))))))))
 

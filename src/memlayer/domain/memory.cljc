@@ -15,13 +15,13 @@
    [:memory/layer Layer]
    [:memory/source :string]
    [:memory/namespace {:optional true} :string]
-   [:memory/parent-id {:optional true} uuid?]])
+   [:memory/parent {:optional true} [:map [:memory/id uuid?]]]])
 
 (def Relationship
   [:map
    [:relationship/id uuid?]
-   [:relationship/source-id uuid?]
-   [:relationship/target-id uuid?]
+   [:relationship/source [:map [:memory/id uuid?]]]
+   [:relationship/target [:map [:memory/id uuid?]]]
    [:relationship/type :keyword]])
 
 ;; -- API schemas --

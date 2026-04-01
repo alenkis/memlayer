@@ -217,8 +217,8 @@
                 ;; Verify relationship was created
                 (let [rels (dh/get-relationships conn [second-id])]
                   (is (= 1 (count rels)))
-                  (is (= second-id (:relationship/source-id (first rels))))
-                  (is (= first-id (:relationship/target-id (first rels))))
+                  (is (= second-id (get-in (first rels) [:relationship/source :memory/id])))
+                  (is (= first-id (get-in (first rels) [:relationship/target :memory/id])))
                   (is (= :elaborates (:relationship/type (first rels)))))))
             (finally
               (th/stop-test-flow! flow))))))))
@@ -339,6 +339,6 @@
                 ;; all should be candidates.
                 (is (some? id3))
                 (when (seq rels)
-                  (is (every? #(= id3 (:relationship/source-id %)) rels)))))
+                  (is (every? #(= id3 (get-in % [:relationship/source :memory/id])) rels)))))
             (finally
               (th/stop-test-flow! flow))))))))

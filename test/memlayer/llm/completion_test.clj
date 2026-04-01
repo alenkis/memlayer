@@ -52,11 +52,11 @@
         id2 (java.util.UUID/randomUUID)
         id3 (java.util.UUID/randomUUID)]
     (testing "formats edges and known types"
-      (let [subgraph {:edges [{:relationship/source-id id1
-                               :relationship/target-id id2
+      (let [subgraph {:edges [{:relationship/source {:memory/id id1}
+                               :relationship/target {:memory/id id2}
                                :relationship/type :elaborates}
-                              {:relationship/source-id id2
-                               :relationship/target-id id3
+                              {:relationship/source {:memory/id id2}
+                               :relationship/target {:memory/id id3}
                                :relationship/type :supports}]
                       :known-types [:elaborates :supports :caused-by]}
             result (format-subgraph-text subgraph)]
@@ -78,8 +78,8 @@
         (is (str/includes? result "Relationship types in use: related-to"))))
 
     (testing "formats only edges when no known types"
-      (let [result (format-subgraph-text {:edges [{:relationship/source-id id1
-                                                   :relationship/target-id id2
+      (let [result (format-subgraph-text {:edges [{:relationship/source {:memory/id id1}
+                                                   :relationship/target {:memory/id id2}
                                                    :relationship/type :refines}]
                                           :known-types []})]
         (is (str/includes? result "--refines-->"))
@@ -126,8 +126,8 @@
                     (fn [msgs _opts]
                       (reset! captured-msgs msgs)
                       {:action "CREATE" :reasoning "New"}))
-          subgraph {:edges [{:relationship/source-id id1
-                             :relationship/target-id id2
+          subgraph {:edges [{:relationship/source {:memory/id id1}
+                             :relationship/target {:memory/id id2}
                              :relationship/type :related-to}]
                     :known-types [:related-to :elaborates]}]
       (completion/decide-action provider th/mock-prompts

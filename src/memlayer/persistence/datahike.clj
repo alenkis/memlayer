@@ -30,22 +30,16 @@
     :db/valueType   :db.type/string
     :db/cardinality :db.cardinality/one
     :db/index       true}
-   {:db/ident       :memory/parent-id
-    :db/valueType   :db.type/uuid
+   {:db/ident       :memory/parent
+    :db/valueType   :db.type/ref
     :db/cardinality :db.cardinality/one}
-   {:db/ident       :memory/contradiction-ids
-    :db/valueType   :db.type/uuid
+   {:db/ident       :memory/contradictions
+    :db/valueType   :db.type/ref
     :db/cardinality :db.cardinality/many}
    ;; Relationship attributes
    {:db/ident       :relationship/id
     :db/valueType   :db.type/uuid
     :db/unique      :db.unique/identity
-    :db/cardinality :db.cardinality/one}
-   {:db/ident       :relationship/source-id
-    :db/valueType   :db.type/uuid
-    :db/cardinality :db.cardinality/one}
-   {:db/ident       :relationship/target-id
-    :db/valueType   :db.type/uuid
     :db/cardinality :db.cardinality/one}
    {:db/ident       :relationship/type
     :db/valueType   :db.type/keyword
@@ -55,7 +49,47 @@
     :db/cardinality :db.cardinality/one}
    {:db/ident       :relationship/description
     :db/valueType   :db.type/string
+    :db/cardinality :db.cardinality/one}
+   {:db/ident       :relationship/source
+    :db/valueType   :db.type/ref
+    :db/cardinality :db.cardinality/one}
+   {:db/ident       :relationship/target
+    :db/valueType   :db.type/ref
     :db/cardinality :db.cardinality/one}])
+
+;; -- Pull patterns --
+
+(def ^:private memory-pull
+  "Full pull pattern for memory entities."
+  [:db/id :memory/id :memory/content :memory/display-title :memory/layer
+   :memory/source :memory/namespace
+   {:memory/parent [:memory/id]} {:memory/contradictions [:memory/id]}])
+
+(def ^:private memory-pull-minimal
+  "Minimal pull pattern for memory entities (used in batch queries)."
+  [:memory/id :memory/content :memory/layer
+   {:memory/parent [:memory/id]} :memory/source :memory/namespace])
+
+(def ^:private relationship-pull
+  "Full pull pattern for relationship entities."
+  [:relationship/id {:relationship/source [:memory/id]}
+   {:relationship/target [:memory/id]} :relationship/type
+   :relationship/confidence :relationship/description])
+
+(defn parent-id
+  "Extract parent UUID from a pulled memory with ref structure."
+  [m]
+  (get-in m [:memory/parent :memory/id]))
+
+(defn- pull-memories
+  "Pull multiple memory entities by their datahike entity IDs."
+  [db eids]
+  (mapv #(d/pull db memory-pull %) eids))
+
+(defn- pull-relationships
+  "Pull multiple relationship entities by their datahike entity IDs."
+  [db eids]
+  (mapv #(d/pull db relationship-pull %) eids))
 
 ;; -- Lifecycle (raw conn — called during system init before wrapping) --
 
@@ -105,10 +139,12 @@
   "Fetch a memory by its UUID."
   [store id]
   (let [conn (:conn store)]
-    (first (d/q '[:find [(pull ?e [*]) ...]
-                  :in $ ?id
-                  :where [?e :memory/id ?id]]
-                @conn id))))
+    (try
+      (let [result (d/pull @conn memory-pull [:memory/id id])]
+        (when (:memory/id result)
+          result))
+      (catch clojure.lang.ExceptionInfo _
+        nil))))
 
 (defn get-memory-at
   "Fetch a memory by its UUID from a point-in-time snapshot.
@@ -118,27 +154,31 @@
         db (if as-of-date
              (d/as-of @conn as-of-date)
              @conn)]
-    (d/q '[:find (pull ?e [*]) .
-           :in $ ?id
-           :where [?e :memory/id ?id]]
-         db id)))
+    (try
+      (let [result (d/pull db memory-pull [:memory/id id])]
+        (when (:memory/id result)
+          result))
+      (catch clojure.lang.ExceptionInfo _
+        nil))))
 
 (defn get-memories-by-namespace
   [store ns-name & {:keys [limit] :or {limit 20}}]
-  (let [conn (:conn store)]
-    (->> (d/q '[:find [(pull ?e [*]) ...]
-                :in $ ?ns
-                :where [?e :memory/namespace ?ns]]
-              @conn ns-name)
+  (let [conn (:conn store)
+        eids (d/q '[:find [?e ...]
+                    :in $ ?ns
+                    :where [?e :memory/namespace ?ns]]
+                  @conn ns-name)]
+    (->> (pull-memories @conn eids)
          (sort-by :db/id #(compare %2 %1))
          (take limit))))
 
 (defn get-recent-memories
   [store & {:keys [limit] :or {limit 20}}]
-  (let [conn (:conn store)]
-    (->> (d/q '[:find [(pull ?e [*]) ...]
-                :where [?e :memory/id _]]
-              @conn)
+  (let [conn (:conn store)
+        eids (d/q '[:find [?e ...]
+                    :where [?e :memory/id _]]
+                  @conn)]
+    (->> (pull-memories @conn eids)
          (sort-by :db/id #(compare %2 %1))
          (take limit))))
 
@@ -193,14 +233,14 @@
         in-clause     (cond-> '[$]
                         namespace (conj '?ns)
                         layer     (conj '?layer))
-        query         {:find  '[(pull ?e [*])]
+        query         {:find  '[?e]
                        :in    in-clause
                        :where where-clauses}
         args          (cond-> [@conn]
                         namespace (conj namespace)
                         layer     (conj layer))
-        results       (mapv first (apply d/q query args))]
-    (->> results
+        eids          (mapv first (apply d/q query args))]
+    (->> (pull-memories @conn eids)
          (sort-by :db/id #(compare %2 %1))
          (drop offset)
          (take limit))))
@@ -224,17 +264,16 @@
                             :where
                             [?e :memory/id ?id ?tx true]]
                           history-db (vec recent-txs)))
-        memories    (if (seq mem-ids)
-                      (let [all (d/q '[:find [(pull ?e [*]) ...]
-                                       :in $ [?id ...]
-                                       :where [?e :memory/id ?id]]
-                                     @conn (vec mem-ids))]
-                        (filterv (fn [m]
-                                   (if namespace
-                                     (= namespace (:memory/namespace m))
-                                     true))
-                                 all))
-                      [])]
+        memories    (->> (or mem-ids [])
+                         (keep (fn [mid]
+                                 (try
+                                   (let [m (d/pull @conn memory-pull [:memory/id mid])]
+                                     (when (:memory/id m) m))
+                                   (catch clojure.lang.ExceptionInfo _ nil))))
+                         (filterv (fn [m]
+                                    (if namespace
+                                      (= namespace (:memory/namespace m))
+                                      true))))]
     memories))
 
 (defn count-all-memories
@@ -293,25 +332,30 @@
     (into {} (map (fn [[layer cnt]] [(name layer) cnt])) results)))
 
 (defn get-children
-  "Fetch memories whose parent-id matches the given id, with pagination."
-  [store parent-id & {:keys [limit offset] :or {limit 100 offset 0}}]
-  (let [conn (:conn store)]
-    (->> (d/q '[:find [(pull ?e [*]) ...]
-                :in $ ?pid
-                :where [?e :memory/parent-id ?pid]]
-              @conn parent-id)
+  "Fetch memories whose parent matches the given id, with pagination."
+  [store pid & {:keys [limit offset] :or {limit 100 offset 0}}]
+  (let [conn (:conn store)
+        eids (d/q '[:find [?e ...]
+                    :in $ ?pid
+                    :where
+                    [?p :memory/id ?pid]
+                    [?e :memory/parent ?p]]
+                  @conn pid)]
+    (->> (pull-memories @conn eids)
          (sort-by :db/id #(compare %2 %1))
          (drop offset)
          (take limit))))
 
 (defn count-children
-  "Count children for a given parent-id."
-  [store parent-id]
+  "Count children for a given parent id."
+  [store pid]
   (let [conn (:conn store)]
     (count (d/q '[:find ?e
                   :in $ ?pid
-                  :where [?e :memory/parent-id ?pid]]
-                @conn parent-id))))
+                  :where
+                  [?p :memory/id ?pid]
+                  [?e :memory/parent ?p]]
+                @conn pid))))
 
 (defn get-relationships
   "Fetch relationships where any of the given memory IDs is source or target."
@@ -319,15 +363,20 @@
   (let [conn (:conn store)]
     (when (seq memory-ids)
       (let [id-set (set memory-ids)
-            as-source (d/q '[:find [(pull ?e [*]) ...]
+            as-source (d/q '[:find [?e ...]
                              :in $ [?mid ...]
-                             :where [?e :relationship/source-id ?mid]]
+                             :where
+                             [?m :memory/id ?mid]
+                             [?e :relationship/source ?m]]
                            @conn (vec id-set))
-            as-target (d/q '[:find [(pull ?e [*]) ...]
+            as-target (d/q '[:find [?e ...]
                              :in $ [?mid ...]
-                             :where [?e :relationship/target-id ?mid]]
+                             :where
+                             [?m :memory/id ?mid]
+                             [?e :relationship/target ?m]]
                            @conn (vec id-set))
-            all (into (vec as-source) as-target)]
+            all-eids (distinct (concat as-source as-target))
+            all (pull-relationships @conn all-eids)]
         (vals (into {} (map (fn [r] [(:relationship/id r) r])) all))))))
 
 (defn get-relationships-for-memory
@@ -391,11 +440,15 @@
         eids (concat
               (d/q '[:find [?e ...]
                      :in $ ?mid
-                     :where [?e :relationship/source-id ?mid]]
+                     :where
+                     [?m :memory/id ?mid]
+                     [?e :relationship/source ?m]]
                    @conn memory-id)
               (d/q '[:find [?e ...]
                      :in $ ?mid
-                     :where [?e :relationship/target-id ?mid]]
+                     :where
+                     [?m :memory/id ?mid]
+                     [?e :relationship/target ?m]]
                    @conn memory-id))]
     (when (seq eids)
       (d/transact conn (mapv (fn [eid] [:db/retractEntity eid]) eids)))
@@ -407,11 +460,19 @@
   [store id]
   (if (get-memory store id)
     (let [conn (:conn store)
-          rel-eids (d/q '[:find [?e ...]
+          src-eids (d/q '[:find [?e ...]
                           :in $ ?mid
-                          :where (or [?e :relationship/source-id ?mid]
-                                     [?e :relationship/target-id ?mid])]
+                          :where
+                          [?m :memory/id ?mid]
+                          [?e :relationship/source ?m]]
                         @conn id)
+          tgt-eids (d/q '[:find [?e ...]
+                          :in $ ?mid
+                          :where
+                          [?m :memory/id ?mid]
+                          [?e :relationship/target ?m]]
+                        @conn id)
+          rel-eids (distinct (concat src-eids tgt-eids))
           rel-txs (mapv (fn [eid] [:db/retractEntity eid]) rel-eids)
           all-txs (conj rel-txs [:db/retractEntity [:memory/id id]])]
       (d/transact conn all-txs)
@@ -440,142 +501,123 @@
       (d/transact conn (mapv (fn [eid] [:db/retractEntity eid]) eids)))
     (count eids)))
 
-(defn- facts-in-ns [conn ns-name]
-  (d/q '[:find [(pull ?e [*]) ...]
-         :in $ ?ns
-         :where
-         [?e :memory/layer :layer/fact]
-         [?e :memory/namespace ?ns]
-         (not [?e :memory/parent-id _])]
-       @conn ns-name))
-
-(defn- facts-all [conn]
-  (d/q '[:find [(pull ?e [*]) ...]
-         :where
-         [?e :memory/layer :layer/fact]
-         (not [?e :memory/parent-id _])]
-       @conn))
-
 (defn get-orphan-facts
-  "Find fact-layer memories with no parent-id set.
+  "Find fact-layer memories with no parent set.
    When namespace is provided, only returns facts in that namespace."
   [store & {:keys [namespace]}]
-  (let [conn (:conn store)]
-    (if namespace
-      (facts-in-ns conn namespace)
-      (facts-all conn))))
-
-(defn- concepts-in-ns [conn ns-name]
-  (d/q '[:find [(pull ?e [*]) ...]
-         :in $ ?ns
-         :where
-         [?e :memory/layer :layer/concept]
-         [?e :memory/namespace ?ns]]
-       @conn ns-name))
-
-(defn- concepts-all [conn]
-  (d/q '[:find [(pull ?e [*]) ...]
-         :where [?e :memory/layer :layer/concept]]
-       @conn))
+  (let [conn (:conn store)
+        eids (if namespace
+               (d/q '[:find [?e ...]
+                      :in $ ?ns
+                      :where
+                      [?e :memory/layer :layer/fact]
+                      [?e :memory/namespace ?ns]]
+                    @conn namespace)
+               (d/q '[:find [?e ...]
+                      :where [?e :memory/layer :layer/fact]]
+                    @conn))
+        all-facts (pull-memories @conn eids)]
+    (filterv #(nil? (:memory/parent %)) all-facts)))
 
 (defn get-concepts
   "Fetch concept-layer memories, optionally scoped by namespace."
   [store & {:keys [namespace]}]
-  (let [conn (:conn store)]
-    (if namespace
-      (concepts-in-ns conn namespace)
-      (concepts-all conn))))
-
-(defn- domains-in-ns [conn ns-name]
-  (d/q '[:find [(pull ?e [*]) ...]
-         :in $ ?ns
-         :where
-         [?e :memory/layer :layer/domain]
-         [?e :memory/namespace ?ns]]
-       @conn ns-name))
-
-(defn- domains-all [conn]
-  (d/q '[:find [(pull ?e [*]) ...]
-         :where [?e :memory/layer :layer/domain]]
-       @conn))
+  (let [conn (:conn store)
+        eids (if namespace
+               (d/q '[:find [?e ...]
+                      :in $ ?ns
+                      :where
+                      [?e :memory/layer :layer/concept]
+                      [?e :memory/namespace ?ns]]
+                    @conn namespace)
+               (d/q '[:find [?e ...]
+                      :where [?e :memory/layer :layer/concept]]
+                    @conn))]
+    (pull-memories @conn eids)))
 
 (defn get-domains
   "Fetch domain-layer memories, optionally scoped by namespace."
   [store & {:keys [namespace]}]
-  (let [conn (:conn store)]
-    (if namespace
-      (domains-in-ns conn namespace)
-      (domains-all conn))))
-
-(defn- orphan-concepts-in-ns [conn ns-name]
-  (d/q '[:find [(pull ?e [*]) ...]
-         :in $ ?ns
-         :where
-         [?e :memory/layer :layer/concept]
-         [?e :memory/namespace ?ns]
-         (not [?e :memory/parent-id _])]
-       @conn ns-name))
-
-(defn- orphan-concepts-all [conn]
-  (d/q '[:find [(pull ?e [*]) ...]
-         :where
-         [?e :memory/layer :layer/concept]
-         (not [?e :memory/parent-id _])]
-       @conn))
+  (let [conn (:conn store)
+        eids (if namespace
+               (d/q '[:find [?e ...]
+                      :in $ ?ns
+                      :where
+                      [?e :memory/layer :layer/domain]
+                      [?e :memory/namespace ?ns]]
+                    @conn namespace)
+               (d/q '[:find [?e ...]
+                      :where [?e :memory/layer :layer/domain]]
+                    @conn))]
+    (pull-memories @conn eids)))
 
 (defn get-orphan-concepts
-  "Find concept-layer memories with no parent-id set.
+  "Find concept-layer memories with no parent set.
    When namespace is provided, only returns concepts in that namespace."
   [store & {:keys [namespace]}]
-  (let [conn (:conn store)]
-    (if namespace
-      (orphan-concepts-in-ns conn namespace)
-      (orphan-concepts-all conn))))
+  (let [conn (:conn store)
+        eids (if namespace
+               (d/q '[:find [?e ...]
+                      :in $ ?ns
+                      :where
+                      [?e :memory/layer :layer/concept]
+                      [?e :memory/namespace ?ns]]
+                    @conn namespace)
+               (d/q '[:find [?e ...]
+                      :where [?e :memory/layer :layer/concept]]
+                    @conn))
+        all-concepts (pull-memories @conn eids)]
+    (filterv #(nil? (:memory/parent %)) all-concepts)))
 
 (defn get-siblings
   "Fetch other children of the same parent, excluding the given memory."
-  [store parent-id & {:keys [exclude-id limit] :or {limit 10}}]
+  [store pid & {:keys [exclude-id limit] :or {limit 10}}]
   (let [conn (:conn store)
-        children (d/q '[:find [(pull ?e [*]) ...]
-                        :in $ ?pid
-                        :where [?e :memory/parent-id ?pid]]
-                      @conn parent-id)]
-    (->> children
+        eids (d/q '[:find [?e ...]
+                    :in $ ?pid
+                    :where
+                    [?p :memory/id ?pid]
+                    [?e :memory/parent ?p]]
+                  @conn pid)]
+    (->> (pull-memories @conn eids)
          (remove #(= exclude-id (:memory/id %)))
          (take limit)
          vec)))
 
 (defn get-summaries-for
-  "Fetch summary-layer memories whose parent-id matches the given memory id."
+  "Fetch summary-layer memories whose parent matches the given memory id."
   [store memory-id]
-  (let [conn (:conn store)]
-    (d/q '[:find [(pull ?e [*]) ...]
-           :in $ ?pid
-           :where
-           [?e :memory/layer :layer/summary]
-           [?e :memory/parent-id ?pid]]
-         @conn memory-id)))
+  (let [conn (:conn store)
+        eids (d/q '[:find [?e ...]
+                    :in $ ?pid
+                    :where
+                    [?p :memory/id ?pid]
+                    [?e :memory/layer :layer/summary]
+                    [?e :memory/parent ?p]]
+                  @conn memory-id)]
+    (pull-memories @conn eids)))
 
 (defn get-memories-batch
   "Fetch multiple memories by UUID in a single query, with a minimal pull pattern."
   [store ids]
   (let [conn (:conn store)]
     (when (seq ids)
-      (d/q '[:find [(pull ?e [:memory/id :memory/content :memory/layer :memory/parent-id
-                              :memory/source :memory/namespace]) ...]
-             :in $ [?id ...]
-             :where [?e :memory/id ?id]]
-           @conn (vec (set ids))))))
+      (let [eids (d/q '[:find [?e ...]
+                        :in $ [?id ...]
+                        :where [?e :memory/id ?id]]
+                      @conn (vec (set ids)))]
+        (mapv #(d/pull @conn memory-pull-minimal %) eids)))))
 
 (defn get-memories-batch-full
   "Fetch multiple memories by UUID in a single query, with full pull pattern."
   [store ids]
   (let [conn (:conn store)]
     (when (seq ids)
-      (d/q '[:find [(pull ?e [*]) ...]
-             :in $ [?id ...]
-             :where [?e :memory/id ?id]]
-           @conn (vec (set ids))))))
+      (let [eids (d/q '[:find [?e ...]
+                        :in $ [?id ...]
+                        :where [?e :memory/id ?id]]
+                      @conn (vec (set ids)))]
+        (pull-memories @conn eids)))))
 
 (defn get-memories-batch-at
   "Fetch multiple memories by UUID from a point-in-time snapshot.
@@ -586,32 +628,38 @@
              (d/as-of @conn as-of-date)
              @conn)]
     (when (seq ids)
-      (d/q '[:find [(pull ?e [*]) ...]
-             :in $ [?id ...]
-             :where [?e :memory/id ?id]]
-           db (vec (set ids))))))
+      (let [eids (d/q '[:find [?e ...]
+                        :in $ [?id ...]
+                        :where [?e :memory/id ?id]]
+                      db (vec (set ids)))]
+        (pull-memories db eids)))))
 
 (defn get-summaries-for-batch
   "Fetch summary-layer memories for multiple parent IDs in a single query."
   [store parent-ids]
   (let [conn (:conn store)]
     (when (seq parent-ids)
-      (d/q '[:find [(pull ?e [:memory/id :memory/content :memory/layer :memory/parent-id]) ...]
-             :in $ [?pid ...]
-             :where
-             [?e :memory/layer :layer/summary]
-             [?e :memory/parent-id ?pid]]
-           @conn (vec (set parent-ids))))))
+      (let [eids (d/q '[:find [?e ...]
+                        :in $ [?pid ...]
+                        :where
+                        [?p :memory/id ?pid]
+                        [?e :memory/layer :layer/summary]
+                        [?e :memory/parent ?p]]
+                      @conn (vec (set parent-ids)))]
+        (mapv #(d/pull @conn memory-pull-minimal %) eids)))))
 
 (defn get-children-of-parents-batch
   "Fetch children for multiple parent IDs in a single query, with a minimal pull pattern."
   [store parent-ids]
   (let [conn (:conn store)]
     (when (seq parent-ids)
-      (d/q '[:find [(pull ?e [:memory/id :memory/content :memory/layer :memory/parent-id]) ...]
-             :in $ [?pid ...]
-             :where [?e :memory/parent-id ?pid]]
-           @conn (vec (set parent-ids))))))
+      (let [eids (d/q '[:find [?e ...]
+                        :in $ [?pid ...]
+                        :where
+                        [?p :memory/id ?pid]
+                        [?e :memory/parent ?p]]
+                      @conn (vec (set parent-ids)))]
+        (mapv #(d/pull @conn memory-pull-minimal %) eids)))))
 
 (defn- relationship-exists?
   "Check if a relationship already exists between two memories (in either direction)
@@ -620,21 +668,26 @@
   (let [forward (d/q '[:find ?e
                        :in $ ?s ?t ?type
                        :where
-                       [?e :relationship/source-id ?s]
-                       [?e :relationship/target-id ?t]
+                       [?sm :memory/id ?s]
+                       [?tm :memory/id ?t]
+                       [?e :relationship/source ?sm]
+                       [?e :relationship/target ?tm]
                        [?e :relationship/type ?type]]
                      @conn source-id target-id type)
         reverse (d/q '[:find ?e
                        :in $ ?s ?t ?type
                        :where
-                       [?e :relationship/source-id ?s]
-                       [?e :relationship/target-id ?t]
+                       [?sm :memory/id ?s]
+                       [?tm :memory/id ?t]
+                       [?e :relationship/source ?sm]
+                       [?e :relationship/target ?tm]
                        [?e :relationship/type ?type]]
                      @conn target-id source-id type)]
     (or (seq forward) (seq reverse))))
 
 (defn insert-relationship!
   "Insert a relationship between two memories.
+   Accepts source-id/target-id as UUIDs; stores as refs via lookup refs.
    Rejects self-references and duplicate pairs (same type, either direction).
    Returns the relationship id, or nil if skipped."
   [store {:keys [source-id target-id type confidence description]
@@ -644,8 +697,8 @@
                (not (relationship-exists? conn source-id target-id type)))
       (let [id (java.util.UUID/randomUUID)]
         (d/transact conn [(cond-> {:relationship/id         id
-                                   :relationship/source-id  source-id
-                                   :relationship/target-id  target-id
+                                   :relationship/source     [:memory/id source-id]
+                                   :relationship/target     [:memory/id target-id]
                                    :relationship/type       type
                                    :relationship/confidence (float confidence)}
                             description (assoc :relationship/description description))])

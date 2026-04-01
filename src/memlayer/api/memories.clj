@@ -14,13 +14,13 @@
            :layer      (name (:memory/layer m))
            :source     (:memory/source m)
            :namespace  (:memory/namespace m)
-           :parent-id  (some-> (:memory/parent-id m) str)}
+           :parent-id  (some-> (get-in m [:memory/parent :memory/id]) str)}
     (:memory/display-title m) (assoc :display-title (:memory/display-title m))))
 
 (defn- serialize-relationship [r]
   (cond-> {:id        (str (:relationship/id r))
-           :source-id (str (:relationship/source-id r))
-           :target-id (str (:relationship/target-id r))
+           :source-id (str (get-in r [:relationship/source :memory/id]))
+           :target-id (str (get-in r [:relationship/target :memory/id]))
            :type      (name (:relationship/type r))}
     (:relationship/description r) (assoc :description (:relationship/description r))))
 

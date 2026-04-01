@@ -26,7 +26,7 @@
 (defn- walk-ancestor-ids
   "Walk parent chains for all memories, returning a map of memory-id → [ancestor-ids]."
   [db memories]
-  (let [id->parent (into {} (keep (fn [m] (when-let [pid (:memory/parent-id m)]
+  (let [id->parent (into {} (keep (fn [m] (when-let [pid (dh/parent-id m)]
                                             [(:memory/id m) pid])))
                          memories)
         all-parent-ids (set (vals id->parent))]
@@ -44,12 +44,12 @@
                           (if (or (nil? pid) (contains? seen pid))
                             {:ancestors acc :by-id by-id}
                             (if-let [parent (get by-id pid)]
-                              (recur (:memory/parent-id parent) (conj acc parent) (conj seen pid) by-id)
+                              (recur (dh/parent-id parent) (conj acc parent) (conj seen pid) by-id)
                               ;; Not yet fetched — fetch and continue
                               (let [fetched (dh/get-memories-batch db [pid])
                                     by-id'  (into by-id (map (fn [m] [(:memory/id m) m])) fetched)]
                                 (if-let [parent (get by-id' pid)]
-                                  (recur (:memory/parent-id parent) (conj acc parent) (conj seen pid) by-id')
+                                  (recur (dh/parent-id parent) (conj acc parent) (conj seen pid) by-id')
                                   {:ancestors acc :by-id by-id'}))))))]
         (reduce (fn [result mem]
                   (if-let [pid (get id->parent (:memory/id mem))]
@@ -71,26 +71,26 @@
         all-summaries    (if (seq all-ancestor-ids)
                            (dh/get-summaries-for-batch db all-ancestor-ids)
                            [])
-        summaries-by-parent (group-by :memory/parent-id all-summaries)
+        summaries-by-parent (group-by dh/parent-id all-summaries)
         ;; 3. Batch fetch siblings for all parent IDs
-        parent-ids      (->> memories (keep :memory/parent-id) distinct vec)
+        parent-ids      (->> memories (keep dh/parent-id) distinct vec)
         all-children    (if (seq parent-ids)
                           (dh/get-children-of-parents-batch db parent-ids)
                           [])
-        children-by-parent (group-by :memory/parent-id all-children)
+        children-by-parent (group-by dh/parent-id all-children)
         mem-id-set      (set memory-ids)
         ;; 4. Batch fetch relationships for all matched memories
         all-rels        (or (dh/get-relationships db memory-ids) [])
         rels-by-memory  (reduce (fn [m r]
-                                  (let [src (:relationship/source-id r)
-                                        tgt (:relationship/target-id r)]
+                                  (let [src (get-in r [:relationship/source :memory/id])
+                                        tgt (get-in r [:relationship/target :memory/id])]
                                     (cond-> m
                                       (contains? mem-id-set src) (update src (fnil conj []) r)
                                       (contains? mem-id-set tgt) (update tgt (fnil conj []) r))))
                                 {} all-rels)
         ;; 5. Batch fetch all relationship endpoints
         all-endpoint-ids (->> all-rels
-                              (mapcat (fn [r] [(:relationship/source-id r) (:relationship/target-id r)]))
+                              (mapcat (fn [r] [(get-in r [:relationship/source :memory/id]) (get-in r [:relationship/target :memory/id])]))
                               (remove mem-id-set)
                               distinct vec)
         endpoint-entities (if (seq all-endpoint-ids)
@@ -103,7 +103,7 @@
                   summaries  (->> ancestors
                                   (mapcat #(get summaries-by-parent (:memory/id %) []))
                                   vec)
-                  siblings   (when-let [pid (:memory/parent-id mem)]
+                  siblings   (when-let [pid (dh/parent-id mem)]
                                (->> (get children-by-parent pid [])
                                     (remove #(= mem-id (:memory/id %)))
                                     (remove #(= :layer/summary (:memory/layer %)))
@@ -111,9 +111,9 @@
                                     vec))
                   rels       (take max-rels-per-memory (get rels-by-memory mem-id []))
                   related    (keep (fn [r]
-                                     (let [other-id (if (= mem-id (:relationship/source-id r))
-                                                      (:relationship/target-id r)
-                                                      (:relationship/source-id r))]
+                                     (let [other-id (if (= mem-id (get-in r [:relationship/source :memory/id]))
+                                                      (get-in r [:relationship/target :memory/id])
+                                                      (get-in r [:relationship/source :memory/id]))]
                                        (or (get endpoint-by-id other-id)
                                           ;; endpoint might be another matched memory
                                            (first (filter #(= other-id (:memory/id (:mem %))) matched)))))
@@ -147,7 +147,7 @@
              :layer      (some-> (:memory/layer mem) name)
              :source     (or (:memory/source mem) "")
              :namespace  (:memory/namespace mem)
-             :parent-id  (some-> (:memory/parent-id mem) str)
+             :parent-id  (some-> (dh/parent-id mem) str)
              :distance   (double distance)}
       expand-data (assoc :ancestors (mapv serialize-ancestor (:ancestors expand-data))
                          :summaries (mapv serialize-ancestor (:summaries expand-data))
@@ -202,13 +202,13 @@
                                   (map (fn [s] [(:memory/id s)
                                                 {:id        (str (:memory/id s))
                                                  :content   (:memory/content s)
-                                                 :parent-id (some-> (:memory/parent-id s) str)}])))
+                                                 :parent-id (some-> (dh/parent-id s) str)}])))
                             expand-entries)
         rels-map      (into {}
                             (comp (mapcat :rels)
                                   (map (fn [r] [(:relationship/id r)
-                                                (cond-> {:source-id (str (:relationship/source-id r))
-                                                         :target-id (str (:relationship/target-id r))
+                                                (cond-> {:source-id (str (get-in r [:relationship/source :memory/id]))
+                                                         :target-id (str (get-in r [:relationship/target :memory/id]))
                                                          :type      (some-> (:relationship/type r) name)}
                                                   (:relationship/description r)
                                                   (assoc :description (:relationship/description r)))])))

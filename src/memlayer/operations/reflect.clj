@@ -55,7 +55,7 @@
     (count
      (keep (fn [fi]
              (when-let [fact (get batch-vec fi)]
-               (dh/update-memory! db (:memory/id fact) {:memory/parent-id concept-id})))
+               (dh/update-memory! db (:memory/id fact) {:memory/parent [:memory/id concept-id]})))
            fact-indices))))
 
 (defn- process-organize-batch
@@ -133,7 +133,7 @@
                      (let [did (UUID/fromString domain-id-str)]
                        (doseq [ci concept-indices]
                          (when-let [c (get concepts-vec ci)]
-                           (dh/update-memory! db (:memory/id c) {:memory/parent-id did})))
+                           (dh/update-memory! db (:memory/id c) {:memory/parent [:memory/id did]})))
                        cnt)
                      (let [content (or (:domain-content group) (:domain-name group))
                            did     (create-memory-node! db vector-index embedding-provider
@@ -144,7 +144,7 @@
                        (if did
                          (do (doseq [ci concept-indices]
                                (when-let [c (get concepts-vec ci)]
-                                 (dh/update-memory! db (:memory/id c) {:memory/parent-id did})))
+                                 (dh/update-memory! db (:memory/id c) {:memory/parent [:memory/id did]})))
                              (inc cnt))
                          (do (log/warn "Skipping domain with blank content from LLM")
                              cnt))))))
@@ -166,7 +166,7 @@
                       (->> (dh/get-memories-since db since :namespace namespace)
                            (filterv (fn [m]
                                       (and (#{:layer/fact :layer/episode} (:memory/layer m))
-                                           (nil? (:memory/parent-id m))))))
+                                           (nil? (:memory/parent m))))))
                       (dh/get-orphan-facts db :namespace namespace))
         existing    (dh/get-concepts db :namespace namespace)]
     (if (empty? candidates)
@@ -222,7 +222,7 @@
                                      :memory/content    summary-text
                                      :memory/layer      :layer/summary
                                      :memory/source     "reflect"
-                                     :memory/parent-id  (:memory/id node)
+                                     :memory/parent     [:memory/id (:memory/id node)]
                                      :memory/namespace  namespace})
               (embed-and-store! db vector-index embedding-provider summary-text id
                                 "summary-embed" namespace)
@@ -355,8 +355,8 @@
             all-rels (or (dh/get-relationships db (vec all-pair-ids)) [])
             existing-rel-pairs (into #{}
                                      (map (fn [r]
-                                            (vec (sort [(str (:relationship/source-id r))
-                                                        (str (:relationship/target-id r))]))))
+                                            (vec (sort [(str (get-in r [:relationship/source :memory/id]))
+                                                        (str (get-in r [:relationship/target :memory/id]))]))))
                                      all-rels)
             new-pairs (filterv (fn [[a b]]
                                  (let [pair-key (vec (sort [(str (:memory/id a))
@@ -393,9 +393,9 @@
                    (let [[a b] pair]
                      ;; Add bidirectional contradiction references
                      (dh/update-memory! db (:memory/id a)
-                                        {:memory/contradiction-ids (:memory/id b)})
+                                        {:memory/contradictions [:memory/id (:memory/id b)]})
                      (dh/update-memory! db (:memory/id b)
-                                        {:memory/contradiction-ids (:memory/id a)})
+                                        {:memory/contradictions [:memory/id (:memory/id a)]})
                      true))))
              contradictions)))
     (catch Exception e
@@ -454,7 +454,7 @@
             mems-by-id (into {} (map (fn [m] [(:memory/id m) m])) (or all-mems []))
             new-pairs (filterv (fn [[a b]]
                                  (let [mem-a (get mems-by-id (:memory/id a))
-                                       cids (set (:memory/contradiction-ids mem-a))]
+                                       cids (set (map :memory/id (:memory/contradictions mem-a)))]
                                    (not (contains? cids (:memory/id b)))))
                                all-pairs)
             batches   (partition-all curate-batch-size new-pairs)

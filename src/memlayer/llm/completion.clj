@@ -84,9 +84,9 @@
   (let [edges-text (when (seq edges)
                      (str "\n\nExisting relationships between these memories:\n"
                           (str/join "\n" (map (fn [e]
-                                                (str "- [" (:relationship/source-id e)
+                                                (str "- [" (get-in e [:relationship/source :memory/id])
                                                      "] --" (name (:relationship/type e))
-                                                     "--> [" (:relationship/target-id e) "]"))
+                                                     "--> [" (get-in e [:relationship/target :memory/id]) "]"))
                                               edges))))
         types-text (when (seq known-types)
                      (str "\n\nRelationship types in use: "

@@ -140,21 +140,21 @@
         concept-id (dh/insert-memory! conn {:memory/content   "Functional Programming"
                                             :memory/layer     :layer/concept
                                             :memory/namespace "test"
-                                            :memory/parent-id domain-id})
+                                            :memory/parent [:memory/id domain-id]})
         fact1-id   (dh/insert-memory! conn {:memory/content    "Clojure uses immutable data structures"
                                             :memory/layer      :layer/fact
                                             :memory/namespace  "test"
                                             :memory/source     "docs"
-                                            :memory/parent-id  concept-id})
+                                            :memory/parent  [:memory/id concept-id]})
         fact2-id   (dh/insert-memory! conn {:memory/content    "Haskell enforces pure functions"
                                             :memory/layer      :layer/fact
                                             :memory/namespace  "test"
                                             :memory/source     "docs"
-                                            :memory/parent-id  concept-id})
+                                            :memory/parent  [:memory/id concept-id]})
         summary-id (dh/insert-memory! conn {:memory/content   "FP emphasizes immutability and pure functions"
                                             :memory/layer     :layer/summary
                                             :memory/namespace "test"
-                                            :memory/parent-id concept-id})
+                                            :memory/parent [:memory/id concept-id]})
         rel-id     (dh/insert-relationship! conn {:source-id   fact1-id
                                                   :target-id   fact2-id
                                                   :type        :related-to
