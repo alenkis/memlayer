@@ -31,7 +31,8 @@
             [clojure.tools.logging :as log]))
 
 ;; Use a fixed port for e2e tests
-(def ^:private e2e-port 18080)
+(def ^:private e2e-port
+  (Long/parseLong (or (System/getenv "MEMLAYER_TEST_PORT") "18080")))
 
 (defn- e2e-config []
   (let [base (config/load-config)]

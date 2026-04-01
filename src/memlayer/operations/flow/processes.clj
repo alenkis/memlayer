@@ -143,15 +143,21 @@
             retain-ns  (:namespace msg)
             candidates (when @vector-index
                          (try
-                           (->> (protocols/search @vector-index embedding candidate-limit)
-                                (mapv (fn [{:keys [id distance]}]
-                                        (let [mem-id (UUID/fromString id)
-                                              db-mem (dh/get-memory db mem-id)]
-                                          (when db-mem
-                                            {:memory-id  mem-id
-                                             :content    (:memory/content db-mem)
-                                             :namespace  (:memory/namespace db-mem)
-                                             :distance   distance})))))
+                           (let [search-results (protocols/search @vector-index embedding candidate-limit)
+                                 result-ids (mapv (fn [{:keys [id]}] (UUID/fromString id)) search-results)
+                                 result-mems (when (seq result-ids)
+                                               (dh/get-memories-batch-full db result-ids))
+                                 mems-by-id (into {} (map (fn [m] [(:memory/id m) m]))
+                                                  (or result-mems []))]
+                             (mapv (fn [{:keys [id distance]}]
+                                     (let [mem-id (UUID/fromString id)
+                                           db-mem (get mems-by-id mem-id)]
+                                       (when db-mem
+                                         {:memory-id  mem-id
+                                          :content    (:memory/content db-mem)
+                                          :namespace  (:memory/namespace db-mem)
+                                          :distance   distance})))
+                                   search-results))
                            (catch Exception e
                              (log/warn "Vector search failed:" (.getMessage e))
                              [])))

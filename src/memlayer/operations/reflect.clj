@@ -285,15 +285,21 @@
                  (try
                    (let [{:keys [embedding]} (llm-provider/embed embedding-provider
                                                                  (:memory/content m))
-                         results (protocols/search @vector-index embedding connect-top-k)]
-                     (->> results
-                          (keep (fn [{:keys [id]}]
-                                  (let [uid (UUID/fromString id)]
-                                    (when (not= uid (:memory/id m))
-                                      (let [other (dh/get-memory db uid)]
-                                        (when (and other
-                                                   (= (:memory/namespace other) namespace))
-                                          [m other]))))))
+                         results (protocols/search @vector-index embedding connect-top-k)
+                         result-ids (into [] (keep (fn [{:keys [id]}]
+                                                     (let [uid (UUID/fromString id)]
+                                                       (when (not= uid (:memory/id m)) uid))))
+                                          results)
+                         result-mems (when (seq result-ids)
+                                       (dh/get-memories-batch-full db result-ids))
+                         mems-by-id (into {} (map (fn [mem] [(:memory/id mem) mem]))
+                                          (or result-mems []))]
+                     (->> result-ids
+                          (keep (fn [uid]
+                                  (let [other (get mems-by-id uid)]
+                                    (when (and other
+                                               (= (:memory/namespace other) namespace))
+                                      [m other]))))
                           vec))
                    (catch Exception e
                      (log/warn "Vector search failed for" (:memory/id m) (.getMessage e))
@@ -301,15 +307,6 @@
        dedupe-pairs
        (take connect-max-pairs)
        vec))
-
-(defn- existing-relationship?
-  "True if a relationship already exists between two memory ids."
-  [db id-a id-b]
-  (let [rels (dh/get-relationships-for-memory db id-a)]
-    (some (fn [r]
-            (or (= id-b (:relationship/target-id r))
-                (= id-b (:relationship/source-id r))))
-          rels)))
 
 (defn- process-connect-batch!
   "Send a batch of concept pairs to LLM and create discovered relationships."
@@ -353,9 +350,18 @@
     (if (empty? dirty)
       {:relationships-created 0 :dirty-count 0 :pairs-evaluated 0}
       (let [pairs     (find-neighbor-pairs db vector-index embedding-provider dirty namespace)
-            ;; Filter out pairs that already have ANY relationship between them
+            ;; Pre-fetch all relationships for all IDs in pairs (single batch)
+            all-pair-ids (into #{} (mapcat (fn [[a b]] [(:memory/id a) (:memory/id b)])) pairs)
+            all-rels (or (dh/get-relationships db (vec all-pair-ids)) [])
+            existing-rel-pairs (into #{}
+                                     (map (fn [r]
+                                            (vec (sort [(str (:relationship/source-id r))
+                                                        (str (:relationship/target-id r))]))))
+                                     all-rels)
             new-pairs (filterv (fn [[a b]]
-                                 (not (existing-relationship? db (:memory/id a) (:memory/id b))))
+                                 (let [pair-key (vec (sort [(str (:memory/id a))
+                                                            (str (:memory/id b))]))]
+                                   (not (contains? existing-rel-pairs pair-key))))
                                pairs)
             batches   (partition-all connect-batch-size new-pairs)
             created   (reduce + 0 (map #(process-connect-batch! deps % namespace) batches))]
@@ -368,12 +374,6 @@
 ;; ---------------------------------------------------------------------------
 
 (def ^:private curate-batch-size tuning/reflect-curate-batch-size)
-
-(defn- already-contradicted?
-  "True if fact-a already has fact-b in its contradiction set."
-  [db id-a id-b]
-  (let [mem (dh/get-memory db id-a)]
-    (contains? (set (:memory/contradiction-ids mem)) id-b)))
 
 (defn- process-curate-batch!
   "Send fact pairs to LLM for contradiction detection. Returns count of new contradictions."
@@ -426,11 +426,15 @@
                            (try
                              (let [{:keys [embedding]} (llm-provider/embed embedding-provider
                                                                            (:memory/content f))
-                                   results (protocols/search @vector-index embedding 5)]
-                               (->> results
-                                    (keep (fn [{:keys [id]}]
-                                            (let [uid (UUID/fromString id)
-                                                  other (dh/get-memory db uid)]
+                                   results (protocols/search @vector-index embedding 5)
+                                   result-ids (mapv (fn [{:keys [id]}] (UUID/fromString id)) results)
+                                   result-mems (when (seq result-ids)
+                                                 (dh/get-memories-batch-full db result-ids))
+                                   mems-by-id (into {} (map (fn [m] [(:memory/id m) m]))
+                                                    (or result-mems []))]
+                               (->> result-ids
+                                    (keep (fn [uid]
+                                            (let [other (get mems-by-id uid)]
                                               (when (and other
                                                          (= :layer/fact (:memory/layer other))
                                                          (not= uid (:memory/id f))
@@ -444,8 +448,14 @@
                  (into {} (map (fn [{:keys [pair-key] :as e}] [pair-key e])))
                  vals
                  (mapv (fn [{:keys [a b]}] [a b])))
+            ;; Pre-fetch all memories to check contradiction-ids
+            all-curate-ids (into #{} (mapcat (fn [[a b]] [(:memory/id a) (:memory/id b)])) all-pairs)
+            all-mems (dh/get-memories-batch-full db (vec all-curate-ids))
+            mems-by-id (into {} (map (fn [m] [(:memory/id m) m])) (or all-mems []))
             new-pairs (filterv (fn [[a b]]
-                                 (not (already-contradicted? db (:memory/id a) (:memory/id b))))
+                                 (let [mem-a (get mems-by-id (:memory/id a))
+                                       cids (set (:memory/contradiction-ids mem-a))]
+                                   (not (contains? cids (:memory/id b)))))
                                all-pairs)
             batches   (partition-all curate-batch-size new-pairs)
             found     (reduce + 0 (map #(process-curate-batch! deps % namespace) batches))]

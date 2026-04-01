@@ -193,15 +193,14 @@
         in-clause     (cond-> '[$]
                         namespace (conj '?ns)
                         layer     (conj '?layer))
-        query         {:find  '[?e]
+        query         {:find  '[(pull ?e [*])]
                        :in    in-clause
                        :where where-clauses}
         args          (cond-> [@conn]
                         namespace (conj namespace)
                         layer     (conj layer))
-        eids          (mapv first (apply d/q query args))]
-    (->> eids
-         (mapv #(d/pull @conn '[*] %))
+        results       (mapv first (apply d/q query args))]
+    (->> results
          (sort-by :db/id #(compare %2 %1))
          (drop offset)
          (take limit))))
@@ -225,15 +224,17 @@
                             :where
                             [?e :memory/id ?id ?tx true]]
                           history-db (vec recent-txs)))
-        memories    (->> (or mem-ids [])
-                         (keep #(d/q '[:find (pull ?e [*]) .
-                                       :in $ ?id
+        memories    (if (seq mem-ids)
+                      (let [all (d/q '[:find [(pull ?e [*]) ...]
+                                       :in $ [?id ...]
                                        :where [?e :memory/id ?id]]
-                                     @conn %))
-                         (filterv (fn [m]
-                                    (if namespace
-                                      (= namespace (:memory/namespace m))
-                                      true))))]
+                                     @conn (vec mem-ids))]
+                        (filterv (fn [m]
+                                   (if namespace
+                                     (= namespace (:memory/namespace m))
+                                     true))
+                                 all))
+                      [])]
     memories))
 
 (defn count-all-memories
@@ -531,6 +532,30 @@
              :in $ [?id ...]
              :where [?e :memory/id ?id]]
            @conn (vec (set ids))))))
+
+(defn get-memories-batch-full
+  "Fetch multiple memories by UUID in a single query, with full pull pattern."
+  [store ids]
+  (let [conn (:conn store)]
+    (when (seq ids)
+      (d/q '[:find [(pull ?e [*]) ...]
+             :in $ [?id ...]
+             :where [?e :memory/id ?id]]
+           @conn (vec (set ids))))))
+
+(defn get-memories-batch-at
+  "Fetch multiple memories by UUID from a point-in-time snapshot.
+   If as-of-date is nil, queries the current db value. Full pull pattern."
+  [store ids as-of-date]
+  (let [conn (:conn store)
+        db (if as-of-date
+             (d/as-of @conn as-of-date)
+             @conn)]
+    (when (seq ids)
+      (d/q '[:find [(pull ?e [*]) ...]
+             :in $ [?id ...]
+             :where [?e :memory/id ?id]]
+           db (vec (set ids))))))
 
 (defn get-summaries-for-batch
   "Fetch summary-layer memories for multiple parent IDs in a single query."

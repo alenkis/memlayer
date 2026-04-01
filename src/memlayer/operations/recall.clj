@@ -244,10 +244,15 @@
                         (catch Exception e
                           (log/warn "Vector search failed:" (.getMessage e))
                           []))
+          ;; Batch-fetch all candidate memories from vector search
+          all-candidate-ids (mapv (fn [{:keys [id]}] (UUID/fromString id)) raw-results)
+          all-candidates    (when (seq all-candidate-ids)
+                              (dh/get-memories-batch-at db all-candidate-ids as-of-date))
+          candidates-by-id  (into {} (map (fn [m] [(:memory/id m) m])) (or all-candidates []))
           matched     (->> raw-results
                            (keep (fn [{:keys [id distance]}]
                                    (let [mem-id (UUID/fromString id)
-                                         mem    (dh/get-memory-at db mem-id as-of-date)]
+                                         mem    (get candidates-by-id mem-id)]
                                      (when (and mem
                                                 (= namespace (:memory/namespace mem))
                                                 (or (nil? layer-filter)
