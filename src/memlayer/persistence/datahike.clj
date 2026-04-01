@@ -36,6 +36,10 @@
    {:db/ident       :memory/contradictions
     :db/valueType   :db.type/ref
     :db/cardinality :db.cardinality/many}
+   {:db/ident       :memory/created-at
+    :db/valueType   :db.type/instant
+    :db/cardinality :db.cardinality/one
+    :db/index       true}
    ;; Relationship attributes
    {:db/ident       :relationship/id
     :db/valueType   :db.type/uuid
@@ -131,7 +135,9 @@
       (throw (ex-info "Cannot insert memory with nil namespace — normalize upstream"
                       {:memory-map (select-keys memory-map [:memory/id :memory/layer :memory/namespace])})))
     (let [id (or (:memory/id memory-map) (UUID/randomUUID))
-          entity (assoc memory-map :memory/id id)]
+          entity (cond-> (assoc memory-map :memory/id id)
+                   (not (:memory/created-at memory-map))
+                   (assoc :memory/created-at (java.util.Date.)))]
       (d/transact conn [entity])
       id)))
 
@@ -169,7 +175,7 @@
                     :where [?e :memory/namespace ?ns]]
                   @conn ns-name)]
     (->> (pull-memories @conn eids)
-         (sort-by :db/id #(compare %2 %1))
+         (sort-by :memory/created-at #(compare %2 %1))
          (take limit))))
 
 (defn get-recent-memories
@@ -179,7 +185,7 @@
                     :where [?e :memory/id _]]
                   @conn)]
     (->> (pull-memories @conn eids)
-         (sort-by :db/id #(compare %2 %1))
+         (sort-by :memory/created-at #(compare %2 %1))
          (take limit))))
 
 (defn update-memory!
@@ -206,19 +212,10 @@
          (d/history @conn) id)))
 
 (defn get-memory-created-at
-  "Get the creation timestamp for a memory from datahike's transaction log.
+  "Get the creation timestamp for a memory.
    Returns a java.util.Date or nil if the memory doesn't exist."
   [store id]
-  (let [conn (:conn store)]
-    (when-let [tx-id (d/q '[:find (min ?tx) .
-                            :in $ ?id
-                            :where
-                            [?e :memory/id ?id ?tx true]]
-                          (d/history @conn) id)]
-      (d/q '[:find ?inst .
-             :in $ ?tx
-             :where [?tx :db/txInstant ?inst]]
-           @conn tx-id))))
+  (:memory/created-at (get-memory store id)))
 
 ;; -- Dashboard queries --
 
@@ -241,40 +238,31 @@
                         layer     (conj layer))
         eids          (mapv first (apply d/q query args))]
     (->> (pull-memories @conn eids)
-         (sort-by :db/id #(compare %2 %1))
+         (sort-by :memory/created-at #(compare %2 %1))
          (drop offset)
          (take limit))))
 
 (defn get-memories-since
-  "Get memories created after the given timestamp, optionally filtered by namespace.
-   Uses datahike's history DB to find entities whose :memory/id was first asserted
-   in a transaction after `since`. Pulls full entities from the current DB."
+  "Get memories created after the given timestamp, optionally filtered by namespace."
   [store since & {:keys [namespace]}]
   (let [conn (:conn store)
-        recent-txs (d/q '[:find [?tx ...]
-                          :in $ ?since
-                          :where
-                          [?tx :db/txInstant ?t]
-                          [(.after ^java.util.Date ?t ?since)]]
-                        @conn since)
-        history-db (d/history @conn)
-        mem-ids    (when (seq recent-txs)
-                     (d/q '[:find [?id ...]
-                            :in $ [?tx ...]
-                            :where
-                            [?e :memory/id ?id ?tx true]]
-                          history-db (vec recent-txs)))
-        memories    (->> (or mem-ids [])
-                         (keep (fn [mid]
-                                 (try
-                                   (let [m (d/pull @conn memory-pull [:memory/id mid])]
-                                     (when (:memory/id m) m))
-                                   (catch clojure.lang.ExceptionInfo _ nil))))
-                         (filterv (fn [m]
-                                    (if namespace
-                                      (= namespace (:memory/namespace m))
-                                      true))))]
-    memories))
+        query (if namespace
+                '[:find [?e ...]
+                  :in $ ?since ?ns
+                  :where
+                  [?e :memory/created-at ?t]
+                  [(.after ^java.util.Date ?t ?since)]
+                  [?e :memory/namespace ?ns]]
+                '[:find [?e ...]
+                  :in $ ?since
+                  :where
+                  [?e :memory/created-at ?t]
+                  [(.after ^java.util.Date ?t ?since)]])
+        args (if namespace
+               [@conn since namespace]
+               [@conn since])
+        eids (apply d/q query args)]
+    (pull-memories @conn eids)))
 
 (defn count-all-memories
   "Count total memories, optionally filtered by namespace and/or layer."
@@ -342,7 +330,7 @@
                     [?e :memory/parent ?p]]
                   @conn pid)]
     (->> (pull-memories @conn eids)
-         (sort-by :db/id #(compare %2 %1))
+         (sort-by :memory/created-at #(compare %2 %1))
          (drop offset)
          (take limit))))
 

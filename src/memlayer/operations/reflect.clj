@@ -245,7 +245,7 @@
           (filterv (fn [node]
                      (let [children (dh/get-children db (:memory/id node))
                            has-recent? (some (fn [c]
-                                               (let [created (dh/get-memory-created-at db (:memory/id c))]
+                                               (let [created (:memory/created-at c)]
                                                  (and created (.after created since))))
                                              children)]
                        (or has-recent? (needs-summary? db (:memory/id node)))))

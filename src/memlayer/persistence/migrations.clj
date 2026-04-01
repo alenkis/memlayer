@@ -57,10 +57,45 @@
                              eids-without-ns)))
     (count eids-without-ns)))
 
+;; -- Migration 002: Backfill created-at --
+
+(defn- migrate-002-backfill-created-at!
+  "Backfill :memory/created-at on all memories that lack the attribute.
+   Uses the earliest transaction timestamp from datahike history as the best-effort value."
+  [conn]
+  (let [conn (->conn conn)
+        eids-without-ts (d/q '[:find [?e ...]
+                               :where
+                               [?e :memory/id _]
+                               (not [?e :memory/created-at _])]
+                             @conn)
+        history-db (d/history @conn)]
+    (when (seq eids-without-ts)
+      (log/info (str "Migration 002: Backfilling " (count eids-without-ts)
+                     " memories with created-at from tx history"))
+      (doseq [eid eids-without-ts]
+        (let [mem-id (d/q '[:find ?id .
+                            :in $ ?e
+                            :where [?e :memory/id ?id]]
+                          @conn eid)
+              tx-id  (d/q '[:find (min ?tx) .
+                            :in $ ?id
+                            :where [?e :memory/id ?id ?tx true]]
+                          history-db mem-id)
+              inst   (when tx-id
+                       (d/q '[:find ?inst .
+                              :in $ ?tx
+                              :where [?tx :db/txInstant ?inst]]
+                            @conn tx-id))]
+          (when inst
+            (d/transact conn [{:db/id eid :memory/created-at inst}])))))
+    (count eids-without-ts)))
+
 ;; -- Migration registry --
 
 (def ^:private migrations
-  [{:id "001-backfill-namespace" :fn migrate-001-backfill-namespace!}])
+  [{:id "001-backfill-namespace" :fn migrate-001-backfill-namespace!}
+   {:id "002-backfill-created-at" :fn migrate-002-backfill-created-at!}])
 
 ;; -- Public API --
 

@@ -38,7 +38,8 @@
   (let [base (config/load-config)]
     (-> base
         (assoc-in [:server :port] e2e-port)
-        (assoc :datahike {:backend :memory}))))
+        (assoc :datahike {:backend :memory})
+        (assoc :proximum {:dim 1536 :capacity 100000 :backend :memory}))))
 
 ;; Integrant methods that mirror system.clj but with e2e overrides
 
