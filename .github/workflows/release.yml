@@ -59,6 +59,13 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Deploy library JAR to Clojars
+        run: bb deploy
+        env:
+          JAVA_CMD: java
+          CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
+          CLOJARS_PASSWORD: ${{ secrets.CLOJARS_PASSWORD }}
+
       - name: Build uberjar
         run: bb uberjar
         env:

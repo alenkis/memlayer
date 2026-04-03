@@ -5,14 +5,14 @@
 
   build
   {:doc  "Resolve deps and compile project"
-   :task (do (shell "clojure" "-P" "-M:test")
-             (shell "clojure" "-M:test" "--print-test-plan" "--focus" ":unit"))}
+   :task (do (shell "clojure" "-P" "-M:server:test")
+             (shell "clojure" "-M:server:test" "--print-test-plan" "--focus" ":unit"))}
 
   server
   {:doc      "Start memlayer (API + dashboard) on a single port + nREPL"
    :depends  [dashboard-ensure]
    :requires ([tasks :as t])
-   :task     (t/shell-env "clojure" "-M:dev" "-m" "dev-main")}
+   :task     (t/shell-env "clojure" "-M:server:dev" "-m" "dev-main")}
 
   dev
   {:doc      "Start API + dashboard hot-reload + CSS watcher (for contributors)"
@@ -20,7 +20,7 @@
    :requires ([tasks :as t])
    :task     (do
                (shell "npm" "run" "build:css")
-               (let [srv  (future (t/shell-env "clojure" "-M:dev" "-m" "dev-main"))
+               (let [srv  (future (t/shell-env "clojure" "-M:server:dev" "-m" "dev-main"))
                      dash (future (shell "npx" "shadow-cljs" "-A:dashboard" "watch" "dashboard"))
                      css  (future (shell "npm" "run" "dev:css"))]
                  (deref srv)))}
@@ -32,12 +32,12 @@
                           "-J--add-modules" "-Jjdk.incubator.vector"
                           "-J--enable-native-access=ALL-UNNAMED"
                           "-J-Dclojure.server.repl={:port 7888 :accept clojure.core.server/repl}"
-                          "-M:dev")}
+                          "-M:server:dev")}
 
   mcp
   {:doc      "Start MCP stdio server"
    :requires ([tasks :as t])
-   :task     (t/shell-env "clojure" "-M:mcp")}
+   :task     (t/shell-env "clojure" "-M:server:mcp" "-m" "memlayer.mcp.server")}
 
   ;; ---- Code Quality ----
 
@@ -55,7 +55,7 @@
 
   test
   {:doc  "Run all unit tests"
-   :task (shell "clojure" "-M:test" "--focus" ":unit")}
+   :task (shell "clojure" "-M:server:test" "--focus" ":unit")}
 
   test-cljs
   {:doc     "Run ClojureScript dashboard unit tests"
@@ -73,12 +73,12 @@
            (when-not focus
              (println "Usage: bb test-focus <namespace>")
              (System/exit 1))
-           (shell "clojure" "-M:test" "--focus" focus))}
+           (shell "clojure" "-M:server:test" "--focus" focus))}
 
   test-integration
   {:doc      "Run integration tests (requires .env with API keys)"
    :requires ([tasks :as t])
-   :task     (t/shell-env "clojure" "-M:integration")}
+   :task     (t/shell-env "clojure" "-M:server:integration")}
 
   test-e2e
   {:doc     "Run Playwright e2e tests (requires running server + dashboard-dev)"
@@ -135,6 +135,20 @@
                (run 'dashboard-build))}
 
   ;; ---- Build / Distribution ----
+
+  jar
+  {:doc  "Build thin library JAR for Clojars distribution"
+   :task (shell "clojure" "-T:build" "jar")}
+
+  install
+  {:doc     "Install library JAR to local Maven repo (~/.m2)"
+   :depends [jar]
+   :task    (shell "clojure" "-T:build:deploy" "install")}
+
+  deploy
+  {:doc     "Deploy library JAR to Clojars (requires CLOJARS_USERNAME, CLOJARS_PASSWORD)"
+   :depends [jar]
+   :task    (shell "clojure" "-T:build:deploy" "deploy")}
 
   uberjar
   {:doc              "Build distributable uberjar (includes dashboard)"

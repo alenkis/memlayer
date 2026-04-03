@@ -2,15 +2,31 @@
 
  :deps
  {org.clojure/clojure             {:mvn/version "1.12.0"}
-  ;; System lifecycle
-  integrant/integrant              {:mvn/version "1.0.1"}
   ;; Schema
   metosin/malli                    {:mvn/version "0.16.4"}
   ;; Database
-  io.replikativ/datahike           {:mvn/version "0.7.1624"}
+  io.replikativ/datahike           {:mvn/version "0.7.1624"
+                                    :exclusions [org.clojure/clojurescript
+                                                 com.github.pkpkpk/cljs-cache
+                                                 com.github.pkpkpk/cljs-node-io
+                                                 com.cognitect/transit-cljs]}
   ;; Vector DB
   org.replikativ/proximum          {:mvn/version "0.1.23"
-                                    :exclusions [org.slf4j/slf4j-simple]}
+                                    :exclusions [org.slf4j/slf4j-simple
+                                                 org.clojure/clojurescript
+                                                 com.google.javascript/closure-compiler-unshaded
+                                                 org.clojure/google-closure-library
+                                                 org.clojure/google-closure-library-third-party
+                                                 com.cognitect/transit-cljs
+                                                 com.cognitect/transit-js
+                                                 com.github.pkpkpk/cljs-node-io
+                                                 fress/fress
+                                                 com.github.pkpkpk/fress
+                                                 tailrecursion/cljs-priority-map
+                                                 org.clojars.mmb90/cljs-cache
+                                                 com.github.pkpkpk/cljs-cache
+                                                 adzerk/boot-test
+                                                 crisptrutski/boot-cljs-test]}
   ;; HTTP client (LLM providers)
   hato/hato                        {:mvn/version "0.9.0"}
   ;; JSON
@@ -19,23 +35,31 @@
   org.clojure/tools.logging        {:mvn/version "1.3.0"}
   ;; Async + flow
   org.clojure/core.async           {:mvn/version "1.9.847-alpha3"}
-  ;; HTTP server
-  http-kit/http-kit                {:mvn/version "2.8.0"}
-  ;; Routing
-  metosin/reitit-ring              {:mvn/version "0.7.2"}
-  metosin/reitit-malli             {:mvn/version "0.7.2"}
-  ;; Content negotiation
-  metosin/muuntaja                 {:mvn/version "0.6.10"}
-  metosin/reitit-middleware        {:mvn/version "0.7.2"}
-  ;; Ring
-  ring/ring-core                   {:mvn/version "1.12.2"}
-  ;; Logging (runtime implementation)
-  ch.qos.logback/logback-classic   {:mvn/version "1.5.6"}
   ;; Configuration
   aero/aero                        {:mvn/version "1.1.6"}}
 
  :aliases
- {:dev
+ {;; Server-only deps — compose with other aliases (e.g. -M:server:dev)
+  ;; Not needed for library consumers, only for running the server/MCP/tests.
+  :server
+  {:extra-deps
+   {;; System lifecycle
+    integrant/integrant              {:mvn/version "1.0.1"}
+    ;; HTTP server
+    http-kit/http-kit                {:mvn/version "2.8.0"}
+    ;; Routing
+    metosin/reitit-ring              {:mvn/version "0.7.2"}
+    metosin/reitit-malli             {:mvn/version "0.7.2"}
+    ;; Content negotiation
+    metosin/muuntaja                 {:mvn/version "0.6.10"}
+    metosin/reitit-middleware        {:mvn/version "0.7.2"}
+    ;; Ring
+    ring/ring-core                   {:mvn/version "1.12.2"}
+    ;; Logging (runtime implementation)
+    ch.qos.logback/logback-classic   {:mvn/version "1.5.6"}}
+   :jvm-opts ["--add-modules" "jdk.incubator.vector" "--enable-native-access=ALL-UNNAMED"]}
+
+  :dev
   {:extra-paths ["dev"]
    :extra-deps
    {integrant/repl                          {:mvn/version "0.4.0"}
@@ -56,10 +80,6 @@
   {:jvm-opts ["--add-modules" "jdk.incubator.vector" "--enable-native-access=ALL-UNNAMED"]
    :main-opts ["-m" "memlayer.mcp.server"]}
 
-  :server
-  {:jvm-opts ["--add-modules" "jdk.incubator.vector" "--enable-native-access=ALL-UNNAMED"]
-   :main-opts ["-m" "memlayer.system"]}
-
   :integration
   {:extra-paths ["test"]
    :extra-deps
@@ -73,6 +93,10 @@
 
   :build
   {:deps {io.github.clojure/tools.build {:mvn/version "0.10.6"}}
+   :ns-default build}
+
+  :deploy
+  {:extra-deps {slipset/deps-deploy {:mvn/version "0.2.2"}}
    :ns-default build}
 
   ;; GraalVM SDK on classpath during AOT so superv.async's native-image-build?

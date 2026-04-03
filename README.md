@@ -210,30 +210,95 @@ Settings live in environment variables or `.env`:
 
 ## Using as a Clojure library
 
-Add the core library to your `deps.edn`:
+Add memlayer-core to your `deps.edn`:
 
 ```clojure
+;; From Clojars (versioned releases)
+{:deps {com.memlayer/memlayer-core {:mvn/version "0.1.0"}}}
+
+;; Or from git (bleeding edge)
 {:deps {io.github.memlayer/memlayer {:git/url "https://github.com/memlayer/memlayer.git"
                                      :git/sha "..."}}}
 ```
 
-Then use the operations directly:
+Proximum requires Java 22+ with incubator vector support:
 
 ```clojure
-(require '[memlayer.operations.retain :as retain])
-(require '[memlayer.operations.recall :as recall])
-
-;; Store a memory
-(retain/retain! system {:content "Project uses PostgreSQL 16"
-                        :source  "architecture-review"
-                        :namespace "my-project"})
-
-;; Search memories
-(recall/recall system {:query "what database do we use?"
-                       :namespace "my-project"})
+:aliases {:your-app {:jvm-opts ["--add-modules" "jdk.incubator.vector"
+                                "--enable-native-access=ALL-UNNAMED"]}}
 ```
 
-All operations live under `memlayer.operations.*` namespaces. See `deps.edn` for the full dependency list.
+### System initialization
+
+All operations take a `deps` map. Build it from the config:
+
+```clojure
+(require '[memlayer.config :as config])
+(require '[memlayer.persistence.datahike :as datahike])
+(require '[memlayer.persistence.proximum :as proximum])
+(require '[memlayer.provider.openai :as openai])
+(require '[memlayer.provider.groq :as groq])
+
+(def cfg (config/load-config))
+
+(def deps
+  {:db                 (datahike/->DatahikeEntityStore
+                         (datahike/create-connection! (:datahike cfg)))
+   :vector-index       (atom (proximum/->ProximumVectorStore
+                               (proximum/create-index! (:proximum cfg))
+                               (:proximum cfg)))
+   :embedding-provider (openai/create-client (:openai cfg))
+   :chat-provider      (groq/create-client (:groq cfg))
+   :prompts            (:prompts cfg)
+   :tuning             (:tuning cfg)})
+```
+
+### Operations
+
+**Retain** — store memories via the async retention flow:
+
+```clojure
+(require '[memlayer.operations.flow.retention-flow :as flow])
+
+(def retain-flow (flow/start-standalone! deps cfg))
+
+(flow/submit! retain-flow {:items     [{:content "Project uses PostgreSQL 16"
+                                        :source  "architecture-review"}]
+                           :namespace "my-project"})
+```
+
+**Recall** — semantic search over memories:
+
+```clojure
+(require '[memlayer.operations.recall :as recall])
+
+(recall/recall! deps {:query     "what database do we use?"
+                      :namespace "my-project"})
+```
+
+**Reflect** — organize and connect knowledge:
+
+```clojure
+(require '[memlayer.operations.reflect :as reflect])
+
+(reflect/reflect! deps {:namespace "my-project"})
+```
+
+**Forget** — remove memories:
+
+```clojure
+(require '[memlayer.operations.forget :as forget])
+
+(forget/forget! deps {:memory-id "..."})  ; retracted, preserved in history
+(forget/evict!  deps {:memory-id "..."})  ; permanent removal (GDPR)
+```
+
+### Shutdown
+
+```clojure
+(flow/stop-standalone! retain-flow)
+(datahike.api/release (:conn (:db deps)))
+```
 
 ## Running the JAR directly
 
