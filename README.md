@@ -9,12 +9,12 @@ When you tell your agent to remember something, memlayer uses an LLM to extract 
 ### Homebrew (recommended)
 
 ```bash
-brew install memlayer/tap/memlayer
+brew install alenkis/tap/memlayer
 ```
 
 ### Download binary
 
-Grab the latest native binary from [Releases](https://github.com/memlayer/memlayer/releases). It's a single executable, no Java or Clojure required.
+Grab the latest native binary from [Releases](https://github.com/alenkis/memlayer/releases). It's a single executable, no Java or Clojure required.
 
 ### From source (Clojure/Java developers)
 
