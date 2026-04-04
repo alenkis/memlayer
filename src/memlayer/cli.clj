@@ -13,6 +13,7 @@
    [nil "--idle-timeout MINUTES" "Idle shutdown timeout in minutes"
     :parse-fn parse-long
     :validate [pos-int? "Must be a positive integer"]]
+   [nil "--instructions-file PATH" "Custom instructions file to extend or override SKILL.md"]
    ["-h" "--help" "Show this help message"]])
 
 (defn parse-args

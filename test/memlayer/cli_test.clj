@@ -29,6 +29,11 @@
       (is (nil? errors))
       (is (= 30 (:idle-timeout options)))))
 
+  (testing "parses --instructions-file"
+    (let [{:keys [options errors]} (cli/parse-args ["--instructions-file" "/tmp/custom.md"])]
+      (is (nil? errors))
+      (is (= "/tmp/custom.md" (:instructions-file options)))))
+
   (testing "parses combined flags"
     (let [{:keys [options errors]} (cli/parse-args ["--port" "9090" "--namespace" "work"])]
       (is (nil? errors))
@@ -69,9 +74,12 @@
   (testing "namespace is not included in config overrides"
     (is (= {} (cli/cli->config-overrides {:namespace "work"}))))
 
+  (testing "instructions-file is not included in config overrides"
+    (is (= {} (cli/cli->config-overrides {:instructions-file "/tmp/custom.md"}))))
+
   (testing "port with other non-config options"
     (is (= {:server {:port 8080}}
-           (cli/cli->config-overrides {:port 8080 :namespace "work"})))))
+           (cli/cli->config-overrides {:port 8080 :namespace "work" :instructions-file "/tmp/x.md"})))))
 
 (deftest load-config-with-overrides
   (testing "port override is applied to loaded config"

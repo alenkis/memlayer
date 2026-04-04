@@ -194,6 +194,7 @@ All data lives locally at `~/.memlayer/`:
 |------|----------|
 | `~/.memlayer/db` | Datahike database (memories, relationships) |
 | `~/.memlayer/vectors` | Proximum vector index (embeddings) |
+| `~/.memlayer/instructions.md` | Custom agent instructions (optional) |
 
 You can override these paths with the `DATAHIKE_PATH` and `PROXIMUM_PATH` environment variables.
 
@@ -210,6 +211,19 @@ Settings live in environment variables, `.env`, or CLI flags. CLI flags take pre
 | `GROQ_MODEL` | — | `llama-3.3-70b-versatile` | LLM model |
 | `DATAHIKE_PATH` | — | `~/.memlayer/db` | Database location |
 | `PROXIMUM_PATH` | — | `~/.memlayer/vectors` | Vector index location |
+| `MEMLAYER_INSTRUCTIONS_FILE` | `--instructions-file` | `~/.memlayer/instructions.md` | Custom instructions file path |
+
+## Custom instructions
+
+Memlayer ships with built-in instructions ([SKILL.md](resources/public/SKILL.md)) that teach AI agents when and how to use memory tools. These are delivered to MCP clients during initialization and available as the `memlayer://skill` resource.
+
+To replace the built-in instructions with your own, create a file at `~/.memlayer/instructions.md`. When this file exists, it completely replaces the defaults. You can use the built-in SKILL.md as a starting point and modify it to fit your workflow.
+
+To use a different path, set `MEMLAYER_INSTRUCTIONS_FILE` or use the `--instructions-file` CLI flag:
+
+```bash
+memlayer --instructions-file ~/my-project/.memlayer-instructions.md
+```
 
 ## Using as a Clojure library
 

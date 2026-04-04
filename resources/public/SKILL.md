@@ -139,14 +139,48 @@ When composing the `content` for `memlayer_retain`:
 
 ## When to reflect
 
-Use `memlayer_reflect` sparingly. It consolidates scattered fact-level memories
-into higher-level concepts. Only use it when:
+Use `memlayer_reflect` to consolidate scattered memories into organized
+knowledge. It runs 4 phases:
 
-- The user explicitly asks to organize their memories
-- You've retained many memories in a session (10+) and they cluster around
-  common themes
+1. **Organize** — groups orphan facts into concepts, and orphan concepts into
+   domains. This is the most common and most useful phase.
+2. **Summarize** — creates summary nodes for concepts and domains that have
+   children but no summary yet.
+3. **Connect** — discovers relationships between memories across different
+   concepts using vector similarity. Finds connections you might not notice.
+4. **Curate** — identifies contradictions between facts (e.g., "user prefers
+   dark mode" vs "user prefers light mode").
 
-Do not reflect proactively without asking the user first.
+### When to use it
+
+- **After a burst of retains** (10+ in a session): the user's memories are
+  likely scattered. Offer to organize them: "I've retained quite a few memories
+  this session — would you like me to organize them?"
+- **When the user asks**: "organize my memories", "clean up what you know about
+  me", "find connections", "are there any contradictions?"
+- **When recall returns many fragments**: if a recall returns 5+ loosely related
+  facts with no concept grouping, the knowledge graph needs organizing.
+
+### How to use it
+
+- **Default (all phases)**: call with no `phases` parameter to run all 4 phases.
+- **Targeted phases**: pass `phases: ["organize"]` or `phases: ["curate"]` to
+  run specific phases.
+- **Dry run first**: when unsure, call with `dry-run: true` to preview what
+  would change without making changes. Share the preview with the user.
+- **Namespace scoped**: reflect operates on the active namespace only.
+
+### What to tell the user
+
+After reflect completes, summarize what happened in plain language:
+
+> I organized your memories: grouped 12 facts into 3 concepts ("API Design",
+> "Deployment", "Testing"), created 1 new domain, and found 1 contradiction
+> between your database preferences.
+
+Do not reflect proactively without asking the user first. Reflect makes LLM
+calls proportional to the number of unorganized memories, so it costs against
+the user's budget.
 
 ## When to forget
 

@@ -29,17 +29,18 @@
 
 (defmulti handle-method (fn [method _params _ctx] method))
 
-(defmethod handle-method "initialize" [_ _params {:keys [active-namespace]}]
-  (let [ns-name (when active-namespace @active-namespace)]
+(defmethod handle-method "initialize" [_ _params {:keys [active-namespace instructions-file]}]
+  (let [ns-name      (when active-namespace @active-namespace)
+        base-instructions (resources/instructions-text instructions-file)]
     {:protocolVersion "2025-03-26"
      :serverInfo      server-info
      :capabilities    capabilities
      :instructions    (if ns-name
-                        (str (resources/instructions-text)
+                        (str base-instructions
                              "\n\n## Active namespace\n\nYour current namespace is `"
                              ns-name "`. All memory operations are scoped to this namespace."
                              " To switch, call the `memlayer_set_namespace` tool.")
-                        (resources/instructions-text))}))
+                        base-instructions)}))
 
 (defmethod handle-method "notifications/initialized" [_ _ _]
   nil) ;; notification, no response
@@ -50,8 +51,8 @@
 (defmethod handle-method "resources/list" [_ _params _ctx]
   {:resources resources/resource-definitions})
 
-(defmethod handle-method "resources/read" [_ params _ctx]
-  (resources/read-resource (:uri params)))
+(defmethod handle-method "resources/read" [_ params {:keys [instructions-file]}]
+  (resources/read-resource (:uri params) instructions-file))
 
 (defn- wrap-mcp-content
   "Wrap a result map as MCP tool content."
@@ -177,16 +178,19 @@
   (let [info @version/build-info]
     (log/info (str "memlayer " (:version info) " (" (:git-sha info) ") built " (:built-at info))))
   (log/info "Starting memlayer MCP client (stdio)")
-  (let [options          (cli/parse-and-validate! args "memlayer mcp - MCP stdio server")
-        port             (or (:port options)
-                             (some-> (System/getenv "MEMLAYER_PORT") parse-long)
-                             default-port)
-        namespace        (or (:namespace options)
-                             (System/getProperty "memlayer.namespace")
-                             "default")
-        active-namespace (atom namespace)
-        base-url         (lifecycle/ensure-server! port)]
+  (let [options           (cli/parse-and-validate! args "memlayer mcp - MCP stdio server")
+        port              (or (:port options)
+                              (some-> (System/getenv "MEMLAYER_PORT") parse-long)
+                              default-port)
+        namespace         (or (:namespace options)
+                              (System/getProperty "memlayer.namespace")
+                              "default")
+        instructions-file (or (:instructions-file options)
+                              (System/getenv "MEMLAYER_INSTRUCTIONS_FILE"))
+        active-namespace  (atom namespace)
+        base-url          (lifecycle/ensure-server! port)]
     (log/info "Connected to memlayer server at" base-url "namespace:" namespace)
-    (run-stdio! {:base-url         base-url
-                 :port             port
-                 :active-namespace active-namespace})))
+    (run-stdio! {:base-url          base-url
+                 :port              port
+                 :active-namespace  active-namespace
+                 :instructions-file instructions-file})))
