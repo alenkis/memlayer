@@ -2,6 +2,8 @@
 
 [![Clojars Project](https://img.shields.io/clojars/v/dev.memlayer/core.svg)](https://clojars.org/dev.memlayer/core)
 
+> **Warning:** Memlayer is under active development and is not yet stable. APIs, data formats, and behavior may change without notice between releases. Use at your own risk.
+
 Memlayer gives AI agents persistent memory backed by a local knowledge graph. It combines semantic search, temporal queries, and automatic entity extraction behind an [MCP](https://modelcontextprotocol.io/) interface, so any compatible agent can retain and recall information across conversations.
 
 When you tell your agent to remember something, memlayer uses an LLM to extract entities and relationships from the text, stores vector embeddings for semantic search, and builds a knowledge graph linking related concepts together. Everything runs locally on your machine — the only external calls are to LLM APIs (OpenAI for embeddings, Groq for entity extraction and decisions).
