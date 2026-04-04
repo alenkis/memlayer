@@ -3,7 +3,7 @@
             [clojure.java.shell :as shell]))
 
 (def lib 'com.memlayer/memlayer)
-(def core-lib 'com.memlayer/memlayer-core)
+(def core-lib 'dev.memlayer/core)
 (def class-dir "target/classes")
 (def uber-file "target/memlayer.jar")
 

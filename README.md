@@ -210,11 +210,11 @@ Settings live in environment variables or `.env`:
 
 ## Using as a Clojure library
 
-Add memlayer-core to your `deps.edn`:
+Add memlayer to your `deps.edn`:
 
 ```clojure
 ;; From Clojars (versioned releases)
-{:deps {com.memlayer/memlayer-core {:mvn/version "0.1.0"}}}
+{:deps {dev.memlayer/core {:mvn/version "0.1.0"}}}
 
 ;; Or from git (bleeding edge)
 {:deps {io.github.memlayer/memlayer {:git/url "https://github.com/memlayer/memlayer.git"
