@@ -6,8 +6,9 @@
 (def ^:private skill-md
   "Lazily loaded SKILL.md content from classpath."
   (delay
-    (or (some-> (io/resource "public/SKILL.md") slurp)
-        "# Memlayer Memory\n\nSKILL.md not found. Visit https://memlayer.dev/SKILL.md for usage instructions.")))
+    (if-let [r (io/resource "public/SKILL.md")]
+      (slurp r)
+      (throw (ex-info "SKILL.md not found on classpath" {})))))
 
 (defn- load-user-instructions
   "Read user instructions file at path. Returns nil if missing or unreadable."
