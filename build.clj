@@ -72,10 +72,13 @@
                                 [:url "https://www.gnu.org/licenses/agpl-3.0.html"]]]]})
     (b/copy-dir {:src-dirs   ["src" "resources"]
                  :target-dir class-dir})
-    ;; Remove files that would conflict with library consumers' classpath
-    (b/delete {:path (str class-dir "/logback.xml")})
-    (b/delete {:path (str class-dir "/logback-mcp.xml")})
-    (b/delete {:path (str class-dir "/public")})
+    ;; Remove server-only namespaces (they require integrant, http-kit, etc.)
+    ;; and files that would conflict with library consumers' classpath.
+    (doseq [path ["memlayer/api" "memlayer/mcp" "memlayer/middleware"
+                  "memlayer/dashboard" "memlayer/router.clj" "memlayer/server.clj"
+                  "memlayer/system.clj" "memlayer/local.clj"
+                  "logback.xml" "logback-mcp.xml" "public"]]
+      (b/delete {:path (str class-dir "/" path)}))
     (b/jar {:class-dir class-dir
             :jar-file  jar-path})
     (println "Built:" jar-path)))
