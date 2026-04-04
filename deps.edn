@@ -36,7 +36,9 @@
   ;; Async + flow
   org.clojure/core.async           {:mvn/version "1.9.847-alpha3"}
   ;; Configuration
-  aero/aero                        {:mvn/version "1.1.6"}}
+  aero/aero                        {:mvn/version "1.1.6"}
+  ;; CLI argument parsing
+  org.clojure/tools.cli            {:mvn/version "1.1.230"}}
 
  :aliases
  {;; Server-only deps — compose with other aliases (e.g. -M:server:dev)

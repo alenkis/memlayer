@@ -52,6 +52,15 @@
           (fn [prompts]
             (update-vals prompts #(:system-prompt (resources/read-edn! %))))))
 
+(defn- deep-merge
+  "Recursively merge b into a. b values win for non-map leaves."
+  [a b]
+  (merge-with (fn [v1 v2]
+                (if (and (map? v1) (map? v2))
+                  (deep-merge v1 v2)
+                  v2))
+              a b))
+
 (defn- expand-home
   "Replace leading ~ with user.home in string values."
   [s]
@@ -68,10 +77,13 @@
 
 (defn load-config
   "Load configuration via Aero from classpath resource.
-   Zero-arity reads config.edn. One-arity reads a named resource."
-  ([] (load-config "config.edn"))
-  ([classpath-resource]
+   Precedence: config.edn defaults → env vars (#env) → CLI overrides.
+   Zero-arity reads config.edn. Two-arity deep-merges overrides after Aero."
+  ([] (load-config "config.edn" nil))
+  ([classpath-resource] (load-config classpath-resource nil))
+  ([classpath-resource overrides]
    (-> (aero/read-config (io/resource classpath-resource))
+       (cond-> (seq overrides) (deep-merge overrides))
        expand-paths
        resolve-prompts
        validate-config!)))

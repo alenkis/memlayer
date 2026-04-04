@@ -3,7 +3,8 @@
    Runs the full application as a self-contained local process with
    file-backed storage, no auth, and bundled dashboard."
   (:gen-class)
-  (:require [memlayer.system :as system]
+  (:require [memlayer.cli :as cli]
+            [memlayer.system :as system]
             [memlayer.server :as server]
             [memlayer.middleware.idle-timeout :as idle]
             [memlayer.version :as version]
@@ -72,26 +73,29 @@
       (.delete f)
       (log/info "Removed PID file"))))
 
-(defn -main [& _args]
+(defn -main [& args]
   (let [info @version/build-info]
     (log/info (str "memlayer local " (:version info)
                    " (" (:git-sha info) ")")))
-  ;; Ensure parent data directory exists (datahike/proximum create their own subdirs)
-  (.mkdirs (File. ^String memlayer-dir))
-  (let [system     (system/start-local-system!)
-        timeout-ms (some-> (System/getenv "MEMLAYER_IDLE_TIMEOUT_MINUTES")
-                           parse-long
-                           (* 60 1000))
-        shutdown!  (fn []
-                     (log/info "Shutting down memlayer...")
-                     (remove-pid-file!)
-                     (system/stop-system! system)
-                     (System/exit 0))
-        stop-idle  (idle/start-idle-watcher! shutdown! timeout-ms)]
-    (write-pid-file!)
-    (.addShutdownHook (Runtime/getRuntime)
-                      (Thread. ^Runnable (fn []
-                                           (stop-idle)
-                                           (remove-pid-file!)
-                                           (system/stop-system! system))))
-    (log/info "memlayer local is running")))
+  (let [options          (cli/parse-and-validate! args "memlayer server - Local HTTP server with dashboard")
+        config-overrides (cli/cli->config-overrides options)
+        timeout-ms       (or (some-> (:idle-timeout options) (* 60 1000))
+                             (some-> (System/getenv "MEMLAYER_IDLE_TIMEOUT_MINUTES")
+                                     parse-long
+                                     (* 60 1000)))]
+    ;; Ensure parent data directory exists (datahike/proximum create their own subdirs)
+    (.mkdirs (File. ^String memlayer-dir))
+    (let [system    (system/start-local-system! config-overrides)
+          shutdown! (fn []
+                      (log/info "Shutting down memlayer...")
+                      (remove-pid-file!)
+                      (system/stop-system! system)
+                      (System/exit 0))
+          stop-idle (idle/start-idle-watcher! shutdown! timeout-ms)]
+      (write-pid-file!)
+      (.addShutdownHook (Runtime/getRuntime)
+                        (Thread. ^Runnable (fn []
+                                             (stop-idle)
+                                             (remove-pid-file!)
+                                             (system/stop-system! system))))
+      (log/info "memlayer local is running"))))

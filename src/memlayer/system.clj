@@ -2,6 +2,7 @@
   "Integrant system definition with all component init/halt methods."
   (:gen-class)
   (:require [integrant.core :as ig]
+            [memlayer.cli :as cli]
             [memlayer.config :as config]
             [memlayer.persistence.datahike :as datahike]
             [memlayer.persistence.proximum :as proximum]
@@ -32,11 +33,9 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]))
 
-(defmethod ig/init-key :memlayer/config [_ {:keys [path]}]
+(defmethod ig/init-key :memlayer/config [_ {:keys [path overrides]}]
   (log/debug "Loading configuration")
-  (if path
-    (config/load-config path)
-    (config/load-config)))
+  (config/load-config (or path "config.edn") overrides))
 
 (defmethod ig/init-key :persistence/datahike [_ {:keys [config]}]
   (let [{:keys [backend path]} (:datahike config)]
@@ -193,20 +192,28 @@
       (assoc :memlayer/local-server {:handler (ig/ref :memlayer/router)
                                      :config  (ig/ref :memlayer/config)})))
 
-(defn start-system! []
-  (ig/init system-config))
+(defn start-system!
+  ([] (start-system! nil))
+  ([overrides]
+   (ig/init (cond-> system-config
+              overrides (assoc-in [:memlayer/config :overrides] overrides)))))
 
-(defn start-local-system! []
-  (ig/init local-system-config))
+(defn start-local-system!
+  ([] (start-local-system! nil))
+  ([overrides]
+   (ig/init (cond-> local-system-config
+              overrides (assoc-in [:memlayer/config :overrides] overrides)))))
 
 (defn stop-system! [system]
   (ig/halt! system))
 
-(defn -main [& _args]
+(defn -main [& args]
   (let [info @version/build-info]
     (log/info (str "memlayer " (:version info) " (" (:git-sha info) ") built " (:built-at info))))
   (log/info "Starting memlayer HTTP server")
-  (let [system (start-system!)]
+  (let [options          (cli/parse-and-validate! args "memlayer - HTTP API server")
+        config-overrides (cli/cli->config-overrides options)
+        system           (start-system! config-overrides)]
     (.addShutdownHook (Runtime/getRuntime)
                       (Thread. ^Runnable #(stop-system! system)))
     (log/info "Memlayer system started")))

@@ -120,10 +120,11 @@ claude mcp add memlayer -- memlayer --namespace work
 You can also start the server manually if you prefer:
 
 ```bash
-memlayer server    # HTTP API + dashboard on port 8090
+memlayer server                # HTTP API + dashboard on port 8090
+memlayer server --port 9090    # use a different port
 ```
 
-To use a different port: `MEMLAYER_PORT=9090 memlayer server`
+You can also set the port via environment variable: `MEMLAYER_PORT=9090 memlayer server`. CLI flags take precedence over environment variables.
 
 ### Server lifecycle
 
@@ -196,17 +197,17 @@ You can override these paths with the `DATAHIKE_PATH` and `PROXIMUM_PATH` enviro
 
 ## Configuration
 
-Settings live in environment variables or `.env`:
+Settings live in environment variables, `.env`, or CLI flags. CLI flags take precedence over environment variables.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MEMLAYER_PORT` | `8090` | HTTP server port |
-| `OPENAI_API_KEY` | — | Required. For embeddings |
-| `GROQ_API_KEY` | — | Required. For extraction and decisions |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | LLM model |
-| `DATAHIKE_PATH` | `~/.memlayer/db` | Database location |
-| `PROXIMUM_PATH` | `~/.memlayer/vectors` | Vector index location |
+| Variable | CLI flag | Default | Description |
+|----------|----------|---------|-------------|
+| `MEMLAYER_PORT` | `--port` | `8090` | HTTP server port |
+| `OPENAI_API_KEY` | — | — | Required. For embeddings |
+| `GROQ_API_KEY` | — | — | Required. For extraction and decisions |
+| `OPENAI_EMBEDDING_MODEL` | — | `text-embedding-3-small` | Embedding model |
+| `GROQ_MODEL` | — | `llama-3.3-70b-versatile` | LLM model |
+| `DATAHIKE_PATH` | — | `~/.memlayer/db` | Database location |
+| `PROXIMUM_PATH` | — | `~/.memlayer/vectors` | Vector index location |
 
 ## Using as a Clojure library
 
@@ -308,10 +309,16 @@ If you prefer the JVM over the native binary (e.g., for debugging or profiling):
 bb uberjar   # or: clojure -T:build uberjar
 java --add-modules jdk.incubator.vector \
      --enable-native-access=ALL-UNNAMED \
-     -cp target/memlayer.jar memlayer.local          # HTTP server
+     -cp target/memlayer.jar memlayer.local                       # HTTP server
 java --add-modules jdk.incubator.vector \
      --enable-native-access=ALL-UNNAMED \
-     -cp target/memlayer.jar memlayer.mcp.server      # MCP server
+     -cp target/memlayer.jar memlayer.local --port 9090           # custom port
+java --add-modules jdk.incubator.vector \
+     --enable-native-access=ALL-UNNAMED \
+     -cp target/memlayer.jar memlayer.mcp.server                  # MCP server
+java --add-modules jdk.incubator.vector \
+     --enable-native-access=ALL-UNNAMED \
+     -cp target/memlayer.jar memlayer.mcp.server --namespace work # MCP with namespace
 ```
 
 Requires Java 22+ (for vector operations). Install via `brew install openjdk` or [Adoptium](https://adoptium.net/).

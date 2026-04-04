@@ -2,7 +2,8 @@
   "MCP server with stdio transport (JSON-RPC over stdin/stdout).
    Thin client that forwards tool calls to the memlayer HTTP server."
   (:gen-class)
-  (:require [memlayer.version :as version]
+  (:require [memlayer.cli :as cli]
+            [memlayer.version :as version]
             [memlayer.mcp.protocol :as proto]
             [memlayer.mcp.tools :as tools]
             [memlayer.mcp.resources :as resources]
@@ -172,12 +173,17 @@
                   (flush))))))
         (recur)))))
 
-(defn -main [& _args]
+(defn -main [& args]
   (let [info @version/build-info]
     (log/info (str "memlayer " (:version info) " (" (:git-sha info) ") built " (:built-at info))))
   (log/info "Starting memlayer MCP client (stdio)")
-  (let [port             (or (some-> (System/getenv "MEMLAYER_PORT") parse-long) default-port)
-        namespace        (or (System/getProperty "memlayer.namespace") "default")
+  (let [options          (cli/parse-and-validate! args "memlayer mcp - MCP stdio server")
+        port             (or (:port options)
+                             (some-> (System/getenv "MEMLAYER_PORT") parse-long)
+                             default-port)
+        namespace        (or (:namespace options)
+                             (System/getProperty "memlayer.namespace")
+                             "default")
         active-namespace (atom namespace)
         base-url         (lifecycle/ensure-server! port)]
     (log/info "Connected to memlayer server at" base-url "namespace:" namespace)

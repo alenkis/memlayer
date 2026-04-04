@@ -3,10 +3,12 @@
 # memlayer - Persistent memory system for AI agents
 #
 # Usage:
-#   memlayer                           # MCP mode (default namespace)
-#   memlayer --namespace work          # MCP mode scoped to "work" namespace
-#   memlayer server                    # HTTP API server
-#   memlayer --env-file ~/.env server  # Load env vars from file
+#   memlayer                                   # MCP mode (default)
+#   memlayer mcp --namespace work              # MCP mode scoped to "work" namespace
+#   memlayer server                            # HTTP API server
+#   memlayer server --port 9090                # HTTP server on custom port
+#   memlayer --env-file ~/.env server          # Load env vars from file
+#   memlayer mcp --help                        # Show MCP CLI options
 #
 # Environment variables:
 #   Auto-loads .env from current directory if present.
@@ -63,9 +65,8 @@ JVM_OPTS=(
   "--enable-native-access=ALL-UNNAMED"
 )
 
-# Parse flags
+# Parse bash-only flags (--env-file must be handled before JVM starts)
 ENV_FILE=""
-NAMESPACE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --env-file)
@@ -74,14 +75,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --env-file=*)
       ENV_FILE="${1#*=}"
-      shift
-      ;;
-    --namespace)
-      NAMESPACE="$2"
-      shift 2
-      ;;
-    --namespace=*)
-      NAMESPACE="${1#*=}"
       shift
       ;;
     *)
@@ -104,8 +97,10 @@ elif [ -f ".env" ]; then
   set +a
 fi
 
-# Determine main class from mode
+# Determine main class from mode (first positional arg)
 MODE="${1:-mcp}"
+shift 2>/dev/null || true
+
 case "$MODE" in
   mcp)
     MAIN_CLASS="memlayer.mcp.server"
@@ -114,19 +109,16 @@ case "$MODE" in
     JVM_OPTS+=("-Dmemlayer.jar-path=${JAR_FILE}")
     # Pass the resolved script dir so spawned server finds the jar
     JVM_OPTS+=("-Dmemlayer.script-dir=${SCRIPT_DIR}")
-    # Pass namespace if configured
-    if [ -n "$NAMESPACE" ]; then
-      JVM_OPTS+=("-Dmemlayer.namespace=${NAMESPACE}")
-    fi
     ;;
   server)
     MAIN_CLASS="memlayer.local"
     ;;
   *)
     echo "Unknown mode: $MODE" >&2
-    echo "Usage: memlayer [mcp|server]" >&2
+    echo "Usage: memlayer [--env-file PATH] [mcp|server] [--namespace NS] [--port PORT] [--help]" >&2
     exit 1
     ;;
 esac
 
-exec "$JAVA" "${JVM_OPTS[@]}" -cp "$JAR_FILE" "$MAIN_CLASS"
+# Pass remaining args (--namespace, --port, --help, etc.) through to Clojure
+exec "$JAVA" "${JVM_OPTS[@]}" -cp "$JAR_FILE" "$MAIN_CLASS" "$@"
