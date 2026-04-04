@@ -21,7 +21,7 @@ Grab the latest native binary from [Releases](https://github.com/alenkis/memlaye
 If you already have Java 22+ and [Clojure CLI](https://clojure.org/guides/install_clojure):
 
 ```bash
-git clone https://github.com/memlayer/memlayer.git
+git clone https://github.com/alenkis/memlayer.git
 cd memlayer
 bb uberjar                    # builds target/memlayer.jar
 java --add-modules jdk.incubator.vector --enable-native-access=ALL-UNNAMED \
@@ -218,7 +218,7 @@ Add memlayer to your `deps.edn`:
 {:deps {dev.memlayer/core {:mvn/version "0.1.0"}}}
 
 ;; Or from git (bleeding edge)
-{:deps {io.github.memlayer/memlayer {:git/url "https://github.com/memlayer/memlayer.git"
+{:deps {io.github.alenkis/memlayer {:git/url "https://github.com/alenkis/memlayer.git"
                                      :git/sha "..."}}}
 ```
 

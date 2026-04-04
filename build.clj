@@ -60,12 +60,12 @@
                   :version   version
                   :basis     @lib-basis
                   :src-dirs  ["src"]
-                  :scm       {:url                 "https://github.com/memlayer/memlayer"
-                              :connection          "scm:git:https://github.com/memlayer/memlayer.git"
-                              :developerConnection "scm:git:ssh://git@github.com/memlayer/memlayer.git"
+                  :scm       {:url                 "https://github.com/alenkis/memlayer"
+                              :connection          "scm:git:https://github.com/alenkis/memlayer.git"
+                              :developerConnection "scm:git:ssh://git@github.com/alenkis/memlayer.git"
                               :tag                 (str "v" version)}
                   :pom-data  [[:description "Memory layer for AI applications — retain, recall, reflect, forget"]
-                              [:url "https://github.com/memlayer/memlayer"]
+                              [:url "https://github.com/alenkis/memlayer"]
                               [:licenses
                                [:license
                                 [:name "AGPL-3.0-or-later"]
