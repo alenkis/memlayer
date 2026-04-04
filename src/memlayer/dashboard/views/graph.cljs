@@ -1055,23 +1055,27 @@
           (if reflecting? "Consolidating..." "Consolidate")]]))))
 
 (defn page []
-  (rf/dispatch [:fetch-graph-data])
-  (fn []
-    (let [graph @(rf/subscribe [:graph])
-          has-highlights? (seq (:highlighted-ids graph))]
-      [:div {:class "flex flex-col flex-1 min-h-0 gap-6"}
-       [:div {:class "flex items-center justify-between"}
-        [:h2 {:class "text-2xl font-bold text-gray-900 dark:text-gray-100"} "Memory Graph"]
-        [:div {:class "flex items-center gap-4"}
-         [consolidate-controls]
-         (when has-highlights?
-           [:button {:on-click #(rf/dispatch [:graph/clear-highlights])
-                     :class    "px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"}
-            "Clear highlights"])
-         [zoom-controls]
-         [layer-toggles]]]
-       [recall-input-bar]
-       [recall-answer-bar]
-       [:div {:class "flex flex-col flex-1 min-h-0 relative"}
-        [graph-panel]
-        [recall-results-panel]]])))
+  (r/create-class
+   {:component-did-mount    (fn [_] (rf/dispatch [:graph/start-polling]))
+    :component-will-unmount (fn [_] (rf/dispatch [:graph/stop-polling]))
+    :reagent-render
+    (fn []
+      (let [graph @(rf/subscribe [:graph])
+            has-highlights? (seq (:highlighted-ids graph))]
+        [:div {:class "flex flex-col flex-1 min-h-0 gap-6"}
+         [:div {:class "flex items-center justify-between"}
+          [:h2 {:class "text-2xl font-bold text-gray-900 dark:text-gray-100"} "Memory Graph"]
+          [:div {:class "flex items-center gap-4"}
+           [consolidate-controls]
+           (when has-highlights?
+             [:button {:on-click #(rf/dispatch [:graph/clear-highlights])
+                       :class    "px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"}
+              "Clear highlights"])
+           [zoom-controls]
+           [layer-toggles]]]
+         [recall-input-bar]
+         [recall-answer-bar]
+         [:div {:class "flex flex-col flex-1 min-h-0 relative"}
+          [graph-panel]
+          [recall-results-panel]]]))}))
+

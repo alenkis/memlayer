@@ -194,6 +194,33 @@
 
 ;; -- Graph --
 
+(defonce ^:private graph-poll-interval (atom nil))
+
+(rf/reg-fx
+ :graph/start-poll-timer
+ (fn [interval-ms]
+   (when-let [old @graph-poll-interval] (js/clearInterval old))
+   (reset! graph-poll-interval
+           (js/setInterval #(rf/dispatch [:fetch-graph-data]) interval-ms))))
+
+(rf/reg-fx
+ :graph/stop-poll-timer
+ (fn [_]
+   (when-let [h @graph-poll-interval]
+     (js/clearInterval h)
+     (reset! graph-poll-interval nil))))
+
+(rf/reg-event-fx
+ :graph/start-polling
+ (fn [_ _]
+   {:dispatch              [:fetch-graph-data]
+    :graph/start-poll-timer 3000}))
+
+(rf/reg-event-fx
+ :graph/stop-polling
+ (fn [_ _]
+   {:graph/stop-poll-timer nil}))
+
 (rf/reg-event-fx
  :fetch-graph-data
  (fn [{:keys [db]} _]
