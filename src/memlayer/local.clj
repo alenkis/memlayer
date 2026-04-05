@@ -73,6 +73,15 @@
       (.delete f)
       (log/info "Removed PID file"))))
 
+(def ^:private shutting-down? (atom false))
+
+(defn- halt-with-deadline!
+  "Halt the system with a 5-second deadline. If halt hangs, force-exit."
+  [system]
+  (when (= ::timeout (deref (future (system/stop-system! system)) 5000 ::timeout))
+    (log/warn "Shutdown deadline exceeded, forcing exit")
+    (.halt (Runtime/getRuntime) 1)))
+
 (defn -main [& args]
   (let [info @version/build-info]
     (log/info (str "memlayer local " (:version info)
@@ -87,15 +96,18 @@
     (.mkdirs (File. ^String memlayer-dir))
     (let [system    (system/start-local-system! config-overrides)
           shutdown! (fn []
-                      (log/info "Shutting down memlayer...")
-                      (remove-pid-file!)
-                      (system/stop-system! system)
-                      (System/exit 0))
-          stop-idle (idle/start-idle-watcher! shutdown! timeout-ms)]
+                      (when (compare-and-set! shutting-down? false true)
+                        (log/info "Shutting down memlayer...")
+                        (remove-pid-file!)
+                        (halt-with-deadline! system)))
+          stop-idle (idle/start-idle-watcher!
+                     (fn []
+                       (shutdown!)
+                       (.halt (Runtime/getRuntime) 0))
+                     timeout-ms)]
       (write-pid-file!)
       (.addShutdownHook (Runtime/getRuntime)
                         (Thread. ^Runnable (fn []
                                              (stop-idle)
-                                             (remove-pid-file!)
-                                             (system/stop-system! system))))
+                                             (shutdown!))))
       (log/info "memlayer local is running"))))

@@ -215,5 +215,9 @@
         config-overrides (cli/cli->config-overrides options)
         system           (start-system! config-overrides)]
     (.addShutdownHook (Runtime/getRuntime)
-                      (Thread. ^Runnable #(stop-system! system)))
+                      (Thread. ^Runnable
+                       (fn []
+                         (when (= ::timeout (deref (future (stop-system! system)) 5000 ::timeout))
+                           (log/warn "Shutdown deadline exceeded, forcing exit")
+                           (.halt (Runtime/getRuntime) 1)))))
     (log/info "Memlayer system started")))
