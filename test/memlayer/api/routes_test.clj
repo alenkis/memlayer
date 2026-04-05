@@ -103,5 +103,23 @@
                   body     (parse-body response)]
               (is (= 201 (:status response)))
               (is (= "test-ns" (get-in body [:namespace :name])))))
+
+          (testing "DELETE /api/v1/account/namespaces/:id deletes namespace"
+            ;; Retain a memory into the namespace so it actually exists in the DB
+            (let [response (json-request app :post "/api/v1/retain/batch"
+                                         {:namespace "test-ns"
+                                          :items     [{:content "ephemeral memory"}]})]
+              (is (= 201 (:status response))))
+            (let [response (json-request app :delete "/api/v1/account/namespaces/test-ns")]
+              (is (= 204 (:status response))))
+            ;; Namespace should no longer appear in the list
+            (let [response (json-request app :get "/api/v1/account/namespaces")
+                  body     (parse-body response)
+                  names    (set (map :name (:namespaces body)))]
+              (is (not (contains? names "test-ns")))))
+
+          (testing "DELETE /api/v1/account/namespaces/:id returns 404 for unknown namespace"
+            (let [response (json-request app :delete "/api/v1/account/namespaces/no-such-ns")]
+              (is (= 404 (:status response)))))
           (finally
             (th/stop-test-flow! flow)))))))

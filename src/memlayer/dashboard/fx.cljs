@@ -54,6 +54,7 @@
   {:method          :delete
    :uri             (config/api-url path)
    :headers         {"Accept" "application/edn"}
+   :format          (ajax/json-request-format)
    :response-format (edn-response-format)
    :on-success      on-success
    :on-failure      on-failure})
