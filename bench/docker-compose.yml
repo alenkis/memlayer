@@ -1,0 +1,35 @@
+services:
+  memlayer:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 30s
+
+  hindsight:
+    image: ghcr.io/vectorize-io/hindsight:latest
+    ports:
+      - "8888:8888"
+      - "9999:9999"
+    environment:
+      HINDSIGHT_API_LLM_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - hindsight-data:/home/hindsight/.pg0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
+
+volumes:
+  hindsight-data:

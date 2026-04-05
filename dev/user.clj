@@ -46,8 +46,11 @@
 (defmethod ig/init-key :memlayer/config [_ _]
   (merge-with merge (config/load-config) @dev-overrides))
 
-;; Default prep: in-memory datahike
-(reset! dev-overrides {:datahike {:backend :memory}})
+;; Default prep: all in-memory unless MEMLAYER_DATA is set
+(reset! dev-overrides (if (System/getenv "MEMLAYER_DATA")
+                        {}
+                        {:datahike  {:backend :memory}
+                         :proximum {:backend :memory}}))
 (set-prep! (constantly sys/system-config))
 
 ;; ---------------------------------------------------------------------------
@@ -58,12 +61,14 @@
   "Start the system.
 
    (go)                                     ;; in-memory (ephemeral)
-   (go {:store \".data/dev-db\"})           ;; file-backed (persistent)"
+   (go {:store \"/tmp/my-data\"})           ;; file-backed (persistent)"
   ([] (go {}))
   ([{:keys [store]}]
-   (reset! dev-overrides {:datahike (if store
-                                      {:backend :file :path store}
-                                      {:backend :memory})})
+   (reset! dev-overrides (if store
+                           {:datahike  {:backend :file :path (str store "/db")}
+                            :proximum {:backend :file :path (str store "/vectors")}}
+                           {:datahike  {:backend :memory}
+                            :proximum {:backend :memory}}))
    (integrant.repl/go)))
 
 ;; ---------------------------------------------------------------------------

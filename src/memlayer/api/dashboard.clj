@@ -112,9 +112,9 @@
           {:status 204
            :body   nil})))))
 
-(defmethod ig/init-key :handler/dashboard [_ {:keys [db]}]
+(defmethod ig/init-key :handler/dashboard [_ {:keys [db deps]}]
   {:usage            (usage-handler {:db db})
    :list-namespaces  (list-namespaces-handler {:db db})
    :create-namespace (create-namespace-handler {:db db})
    :rename-namespace (rename-namespace-handler {:db db})
-   :delete-namespace (delete-namespace-handler {:db db})})
+   :delete-namespace (delete-namespace-handler (or deps {:db db}))})

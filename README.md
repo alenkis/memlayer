@@ -198,7 +198,7 @@ All data lives locally at `~/.memlayer/`:
 | `~/.memlayer/vectors` | Proximum vector index (embeddings) |
 | `~/.memlayer/instructions.md` | Custom agent instructions (optional) |
 
-You can override these paths with the `DATAHIKE_PATH` and `PROXIMUM_PATH` environment variables.
+Set `MEMLAYER_DATA` to store data at a custom location (both database and vectors go under that path).
 
 ## Configuration
 
@@ -211,8 +211,7 @@ Settings live in environment variables, `.env`, or CLI flags. CLI flags take pre
 | `GROQ_API_KEY` | — | — | Required. For extraction and decisions |
 | `OPENAI_EMBEDDING_MODEL` | — | `text-embedding-3-small` | Embedding model |
 | `GROQ_MODEL` | — | `llama-3.3-70b-versatile` | LLM model |
-| `DATAHIKE_PATH` | — | `~/.memlayer/db` | Database location |
-| `PROXIMUM_PATH` | — | `~/.memlayer/vectors` | Vector index location |
+| `MEMLAYER_DATA` | — | `~/.memlayer` | Data directory (db + vectors) |
 | `MEMLAYER_INSTRUCTIONS_FILE` | `--instructions-file` | `~/.memlayer/instructions.md` | Custom instructions file path |
 
 ## Custom instructions

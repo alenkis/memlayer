@@ -147,4 +147,7 @@
   (log/debug "Stopping retention flow")
   (flow/stop graph)
   (corr/drain! correlation-map)
-  (when io-exec (.shutdown io-exec)))
+  (when io-exec
+    (.shutdown io-exec)
+    (when-not (.awaitTermination io-exec 2 java.util.concurrent.TimeUnit/SECONDS)
+      (.shutdownNow io-exec))))

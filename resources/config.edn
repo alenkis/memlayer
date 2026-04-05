@@ -8,13 +8,16 @@
 {:server {:port #long #or [#env MEMLAYER_PORT 8090]
           :dashboard-port 0}
 
+ ;; Storage: set MEMLAYER_DATA to a directory path for file-backed persistence.
+ ;; Both datahike and proximum will store data under that path.
+ ;; When unset, defaults to ~/.memlayer (dev mode overrides to :memory).
  :datahike {:backend :file
-            :path #or [#env DATAHIKE_PATH "~/.memlayer/db"]}
+            :path #join [#or [#env MEMLAYER_DATA "~/.memlayer"] "/db"]}
 
  :proximum {:dim 1536
             :capacity #long #or [#env PROXIMUM_CAPACITY 100000]
-            :backend #keyword #or [#env PROXIMUM_BACKEND "file"]
-            :path #or [#env PROXIMUM_PATH "~/.memlayer/vectors"]}
+            :backend :file
+            :path #join [#or [#env MEMLAYER_DATA "~/.memlayer"] "/vectors"]}
 
  :openai {:api-key #env OPENAI_API_KEY
           :base-url #or [#env OPENAI_BASE_URL "https://api.openai.com/v1"]

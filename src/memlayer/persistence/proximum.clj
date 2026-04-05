@@ -24,15 +24,16 @@
    Supports :backend :memory (default, for tests) or :backend :file (persistent).
    For file backend, loads existing index if present, otherwise creates new."
   [{:keys [dim capacity backend path] :or {dim 1536 capacity 100000 backend :memory}}]
-  (let [store-config (case backend
+  (let [canonical    (when path (.getCanonicalPath (File. ^String path)))
+        store-config (case backend
                        :file {:backend :file
-                              :path    path
-                              :id      (UUID/nameUUIDFromBytes (.getBytes (str "proximum:" path)))}
+                              :path    canonical
+                              :id      (UUID/nameUUIDFromBytes (.getBytes (str "proximum:" canonical)))}
                        ;; default to :memory
                        {:backend :memory
                         :id      (UUID/randomUUID)})]
     (if (and (= backend :file)
-             (.exists (java.io.File. ^String path)))
+             (.exists (File. ^String canonical)))
       (try
         (log/info "Loading existing proximum index" {:path path})
         (prox/load store-config)
@@ -40,12 +41,18 @@
           (throw (ex-info "Failed to load proximum index — manual intervention required"
                           {:path path :error (.getMessage e)}
                           e))))
-      (do
-        (log/info "Creating proximum index" {:dim dim :capacity capacity :backend backend})
-        (prox/create-index {:type         :hnsw
-                            :dim          dim
-                            :store-config store-config
-                            :capacity     capacity})))))
+      (let [index (do
+                    (log/info "Creating proximum index" {:dim dim :capacity capacity :backend backend})
+                    (prox/create-index {:type         :hnsw
+                                        :dim          dim
+                                        :store-config store-config
+                                        :capacity     capacity}))]
+        ;; Sync immediately so the :main branch exists on disk.
+        ;; Without this, a server that shuts down before any vectors are
+        ;; added leaves .ksv files with no :main branch, crashing on reload.
+        (when (= backend :file)
+          (a/<!! (prox/sync! index)))
+        index))))
 
 (defn store-vector!
   "Store a vector with a string key (memory-id). Returns updated index."

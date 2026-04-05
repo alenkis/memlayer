@@ -51,6 +51,10 @@ e2e-report.json
 # Planning docs (local only)
 docs/plans/
 
+# Benchmark data and results
+bench/data/
+bench/results/
+
 # Git worktrees
 .worktrees/
 

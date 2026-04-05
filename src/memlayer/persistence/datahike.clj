@@ -102,13 +102,20 @@
   [conn]
   (d/transact conn schema))
 
+(defn- normalize-path
+  "Resolve path to absolute canonical form for consistent store identity."
+  [path]
+  (-> (java.io.File. ^String path)
+      (.getCanonicalPath)))
+
 (defn- store-config
   "Build a datahike store config from backend options."
   [{:keys [backend path]}]
   (case backend
     :memory {:backend :memory :id (UUID/randomUUID)}
-    :file   {:backend :file :path path
-             :id (UUID/nameUUIDFromBytes (.getBytes (str "memlayer:" path)))}
+    :file   (let [canonical (normalize-path path)]
+              {:backend :file :path canonical
+               :id (UUID/nameUUIDFromBytes (.getBytes (str "memlayer:" canonical)))})
     ;; S3 backend deferred — see MEM-14
     (throw (ex-info (str "Unsupported datahike backend: " backend) {:backend backend}))))
 

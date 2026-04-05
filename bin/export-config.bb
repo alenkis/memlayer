@@ -17,7 +17,9 @@
    'keyword (fn [v] (keyword (str v)))
    'boolean (fn [v] (cond (boolean? v) v
                           (string? v)  (= "true" v)
-                          :else        (boolean v)))})
+                          :else        (boolean v)))
+   'join    (fn [vs] (apply str vs))
+   'str     (fn [vs] (apply str vs))})
 
 (defn read-config []
   (edn/read-string {:readers readers} (slurp "resources/config.edn")))

@@ -158,7 +158,8 @@
    :handler/memories     {:db  (ig/ref :persistence/datahike)
                           :deps (ig/ref :memlayer/deps)}
    :handler/stats        {:deps (ig/ref :memlayer/deps)}
-   :handler/dashboard    {:db (ig/ref :persistence/datahike)}
+   :handler/dashboard    {:db   (ig/ref :persistence/datahike)
+                          :deps (ig/ref :memlayer/deps)}
    :handler/mcp          {:flow (ig/ref :memlayer/retention-flow)
                           :deps (ig/ref :memlayer/deps)}
 

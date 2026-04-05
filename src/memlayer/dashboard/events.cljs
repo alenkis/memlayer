@@ -225,8 +225,13 @@
  :fetch-graph-data
  (fn [{:keys [db]} _]
    (let [namespace (or (:active-namespace db) "default")
-         path      (str "/memories?namespace=" namespace "&limit=200")]
-     {:db (assoc-in db [:graph :loading?] true)
+         path      (str "/memories?namespace=" namespace "&limit=200")
+         ;; Only show loading spinner on initial fetch, not on poll updates.
+         ;; Setting loading? on every poll causes the graph to unmount/remount,
+         ;; destroying D3 simulation state.
+         first-load? (empty? (get-in db [:graph :memories]))]
+     {:db (cond-> db
+            first-load? (assoc-in [:graph :loading?] true))
       :http-xhrio (fx/api-get path
                               [:fetch-graph-data-success]
                               [:fetch-graph-data-failure])})))

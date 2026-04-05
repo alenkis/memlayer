@@ -9,10 +9,13 @@
              (shell "clojure" "-M:server:test" "--print-test-plan" "--focus" ":unit"))}
 
   server
-  {:doc      "Start memlayer (API + dashboard) on a single port + nREPL"
+  {:doc      "Start memlayer. Usage: bb server [path]  — path enables file-backed storage"
    :depends  [dashboard-ensure]
-   :requires ([tasks :as t])
-   :task     (t/shell-env "clojure" "-M:server:dev" "-m" "dev-main")}
+   :requires ([tasks :as t] [babashka.process :refer [shell]] [clojure.string :as str])
+   :task     (let [path  (some-> (first *command-line-args*) (str/replace (re-pattern "/+$") ""))
+                   extra (if path {"MEMLAYER_DATA" path} {})
+                   env   (merge (t/load-dotenv) extra)]
+               (shell {:extra-env env} "clojure" "-M:server:dev" "-m" "dev-main"))}
 
   dev
   {:doc      "Start API + dashboard hot-reload + CSS watcher (for contributors)"
@@ -51,7 +54,7 @@
 
   lint
   {:doc  "Run clj-kondo linter"
-   :task (shell "clj-kondo" "--lint" "src" "test" "--fail-level" "warning")}
+   :task (shell "clj-kondo" "--lint" "src" "test" "bench/src" "--fail-level" "warning")}
 
   test
   {:doc  "Run all unit tests"
@@ -133,6 +136,50 @@
    :requires ([babashka.fs :as fs])
    :task     (when-not (fs/exists? "resources/public/js/compiled/main.js")
                (run 'dashboard-build))}
+
+  ;; ---- Benchmarks ----
+
+  bench-download
+  {:doc      "Download LongMemEval dataset from HuggingFace"
+   :requires ([babashka.fs :as fs])
+   :task     (do
+               (fs/create-dirs "bench/data")
+               (doseq [variant ["longmemeval_oracle.json" "longmemeval_s_cleaned.json"]]
+                 (let [f (str "bench/data/" variant)]
+                   (if (fs/exists? f)
+                     (println (str "  " variant " already exists, skipping"))
+                     (do (println (str "  Downloading " variant "..."))
+                         (shell "curl" "-L" "-o" f
+                                (str "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/" variant)))))))}
+
+  bench
+  {:doc      "Run LongMemEval benchmark. Usage: bb bench [:dataset oracle] [:limit 5] [:systems '[\"memlayer\"]']"
+   :requires ([tasks :as t])
+   :task     (apply t/shell-env "clojure" "-M:server:bench" "-e"
+                    "(require '[memlayer.bench.runner]) (memlayer.bench.runner/run-cli)"
+                    *command-line-args*)}
+
+  bench-clean
+  {:doc      "Clean bench artifacts: results, store data, and namespaces (if server running)"
+   :requires ([babashka.fs :as fs])
+   :task     (let [dirs    ["bench/results" "bench/data/db" "bench/data/vectors"]
+                   deleted (filterv fs/exists? dirs)]
+               (println "Cleaning bench artifacts...")
+               ;; Filesystem cleanup — everything except downloaded datasets
+               (if (seq deleted)
+                 (doseq [dir deleted]
+                   (fs/delete-tree dir)
+                   (println "  Deleted" dir))
+                 (println "  No files to clean"))
+               ;; API cleanup — delete bench-* namespaces if server is reachable
+               (try
+                 (slurp "http://localhost:8090/health")
+                 (println "  Cleaning bench namespaces from server...")
+                 (shell "clojure" "-M:server:bench" "-e"
+                        "(require '[memlayer.bench.runner]) (memlayer.bench.runner/clean! {})")
+                 (catch Exception _
+                   (println "  Server not running, skipping namespace cleanup")))
+               (println "Done."))}
 
   ;; ---- Build / Distribution ----
 

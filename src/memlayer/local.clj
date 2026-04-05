@@ -17,7 +17,8 @@
            [java.lang ProcessHandle]))
 
 (def ^:private memlayer-dir
-  (str (System/getProperty "user.home") "/.memlayer"))
+  (or (System/getenv "MEMLAYER_DATA")
+      (str (System/getProperty "user.home") "/.memlayer")))
 
 (def ^:private pid-file-path
   (str memlayer-dir "/server.pid"))
