@@ -20,8 +20,10 @@
     :description "Build LLM context from recent memories"}
    {:pid :batch-extract   :label "Batch Extract"   :workload "io"
     :description "Extract structured memories via LLM"}
+   {:pid :collect-embeds  :label "Collect Embeds"  :workload "io"
+    :description "Accumulate messages for batch embedding"}
    {:pid :embed-and-dedup :label "Embed & Dedup"   :workload "io"
-    :description "Embed content, search duplicates"}
+    :description "Batch embed content, search duplicates"}
    {:pid :decide          :label "Decide"          :workload "io"
     :description "LLM decides CREATE/UPDATE/DELETE/NOOP"}
    {:pid :execute         :label "Execute"         :workload "compute"
@@ -29,7 +31,8 @@
 
 (def ^:private pipeline-connections
   [["prepare-context" "batch-extract"]
-   ["batch-extract" "embed-and-dedup"]
+   ["batch-extract" "collect-embeds"]
+   ["collect-embeds" "embed-and-dedup"]
    ["embed-and-dedup" "decide"]
    ["decide" "execute"]])
 

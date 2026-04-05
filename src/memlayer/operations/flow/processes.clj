@@ -117,14 +117,166 @@
                                  extracted)}]))))))
 
 ;; ---------------------------------------------------------------------------
-;; :embed-and-dedup
+;; :collect-embeds
 ;;
-;; Embeds each extracted memory and searches for duplicate candidates.
-;; Runs on :io workload — multiple messages processed concurrently.
+;; Accumulates individual messages into batches for efficient embedding.
+;; Runs on :io workload. Flush signals are injected into :in port as
+;; sentinel messages with {:type :flush}.
 ;; ---------------------------------------------------------------------------
 
+(defn collect-embeds-proc
+  "Factory: accumulates messages and emits batch messages for embed-and-dedup.
+   Closes over max-batch-size from flow config.
+   Flush signals ({:type :flush}) are injected via flow/inject to the :in port."
+  [{:keys [max-batch-size]}]
+  (let [max-batch-size (or max-batch-size 64)]
+    (flow/process
+     (fn
+       ([] {:ins {:in nil} :outs {:out nil} :workload :io})
+       ([_args] {:buffer []})
+       ([state _transition] state)
+       ([state _in-id msg]
+        (if (= :flush (:type msg))
+          ;; Flush signal: emit whatever's buffered
+          (let [buf (:buffer state)]
+            (if (seq buf)
+              (do (log/debug "Flush: emitting batch of" (count buf) "items")
+                  [(push-op (assoc state :buffer [])
+                            {:op :flush :batch-size (count buf)})
+                   {:out [{:batch-items buf}]}])
+              [state {}]))
+          ;; Regular message: buffer it
+          (let [buf (conj (:buffer state) msg)]
+            (if (>= (count buf) max-batch-size)
+              ;; Buffer full: emit batch
+              (do (log/debug "Buffer full: emitting batch of" (count buf) "items")
+                  [(push-op (assoc state :buffer [])
+                            {:op :full-batch :batch-size (count buf)})
+                   {:out [{:batch-items buf}]}])
+              ;; Still accumulating
+              [(assoc state :buffer buf) {}]))))))))
+
+;; ---------------------------------------------------------------------------
+;; :embed-and-dedup
+;;
+;; Embeds memories and searches for duplicate candidates.
+;; Handles both batch messages (from :collect-embeds) and single messages
+;; (fallback). Runs on :io workload for concurrent HTTP calls.
+;; ---------------------------------------------------------------------------
+
+(defn- split-usage-proportional
+  "Split batch embedding usage tokens proportional to text lengths."
+  [batch-usage texts]
+  (let [lengths   (mapv count texts)
+        total-len (reduce + 0 lengths)
+        n         (count texts)
+        total-pt  (:prompt-tokens batch-usage 0)
+        total-tt  (:total-tokens batch-usage 0)
+        model     (:model batch-usage)
+        provider  (:provider batch-usage)]
+    (mapv (fn [len]
+            (let [frac (if (pos? total-len)
+                         (/ (double len) total-len)
+                         (/ 1.0 n))]
+              {:prompt-tokens     (long (Math/round (* total-pt frac)))
+               :completion-tokens 0
+               :total-tokens      (long (Math/round (* total-tt frac)))
+               :model             model
+               :provider          provider}))
+          lengths)))
+
+(defn- dedup-single
+  "Embed a single memory, search for candidates, filter by namespace.
+   Returns [embedding usage filtered-candidates]."
+  [embedding-provider vector-index db candidate-limit content retain-ns]
+  (let [{:keys [embedding usage]} (llm-provider/embed embedding-provider content)
+        _ (when usage
+            (usage/record-from-provider-safe! db
+                                              {:operation "retain" :step "dedup-embed"
+                                               :namespace retain-ns}
+                                              usage))
+        candidates (when @vector-index
+                     (try
+                       (let [search-results (protocols/search @vector-index embedding candidate-limit)
+                             result-ids (mapv (fn [{:keys [id]}] (UUID/fromString id)) search-results)
+                             result-mems (when (seq result-ids)
+                                           (dh/get-memories-batch-full db result-ids))
+                             mems-by-id (into {} (map (fn [m] [(:memory/id m) m]))
+                                              (or result-mems []))]
+                         (mapv (fn [{:keys [id distance]}]
+                                 (let [mem-id (UUID/fromString id)
+                                       db-mem (get mems-by-id mem-id)]
+                                   (when db-mem
+                                     {:memory-id  mem-id
+                                      :content    (:memory/content db-mem)
+                                      :namespace  (:memory/namespace db-mem)
+                                      :distance   distance})))
+                               search-results))
+                       (catch Exception e
+                         (log/warn "Vector search failed:" (.getMessage e))
+                         [])))
+        filtered (->> (or candidates [])
+                      (filterv (fn [c]
+                                 (and (some? c)
+                                      (= (:namespace c) retain-ns)))))]
+    [embedding usage filtered]))
+
+(defn- dedup-search
+  "Search for candidates given a pre-computed embedding. Returns filtered candidates."
+  [vector-index db candidate-limit embedding retain-ns]
+  (let [candidates (when @vector-index
+                     (try
+                       (let [search-results (protocols/search @vector-index embedding candidate-limit)
+                             result-ids (mapv (fn [{:keys [id]}] (UUID/fromString id)) search-results)
+                             result-mems (when (seq result-ids)
+                                           (dh/get-memories-batch-full db result-ids))
+                             mems-by-id (into {} (map (fn [m] [(:memory/id m) m]))
+                                              (or result-mems []))]
+                         (mapv (fn [{:keys [id distance]}]
+                                 (let [mem-id (UUID/fromString id)
+                                       db-mem (get mems-by-id mem-id)]
+                                   (when db-mem
+                                     {:memory-id  mem-id
+                                      :content    (:memory/content db-mem)
+                                      :namespace  (:memory/namespace db-mem)
+                                      :distance   distance})))
+                               search-results))
+                       (catch Exception e
+                         (log/warn "Vector search failed:" (.getMessage e))
+                         [])))]
+    (->> (or candidates [])
+         (filterv (fn [c]
+                    (and (some? c)
+                         (= (:namespace c) retain-ns)))))))
+
+(defn- process-batch-embed
+  "Process a batch of messages: embed all texts in one call, then dedup each."
+  [embedding-provider vector-index db candidate-limit items]
+  (let [texts      (mapv #(get-in % [:mem :content]) items)
+        {:keys [embeddings usage]} (llm-provider/embed-batch embedding-provider texts)
+        per-usages (split-usage-proportional usage texts)]
+    (log/info "Batch embedded" (count texts) "texts in single call")
+    (mapv (fn [msg embedding item-usage]
+            (let [retain-ns (:namespace msg)
+                  _ (when item-usage
+                      (usage/record-from-provider-safe! db
+                                                        {:operation "retain" :step "dedup-embed"
+                                                         :namespace retain-ns}
+                                                        item-usage))
+                  filtered (dedup-search vector-index db candidate-limit embedding retain-ns)]
+              {:msg       (assoc msg
+                                 :mem (assoc (:mem msg)
+                                             :embedding embedding
+                                             :candidates filtered)
+                                 :embed-usage item-usage)
+               :usage     item-usage
+               :filtered  filtered}))
+          items embeddings per-usages)))
+
 (defn embed-and-dedup-proc
-  "Factory: closes over deps so they stay out of process state."
+  "Factory: closes over deps so they stay out of process state.
+   Handles both batch messages {:batch-items [...]} from collect-embeds
+   and single messages (fallback)."
   [{:keys [embedding-provider vector-index db tuning]}]
   (flow/process
    (fn
@@ -132,55 +284,43 @@
      ([_args] {})
      ([state _transition] state)
      ([state _in-id msg]
-      (let [candidate-limit (or (:retain-candidate-limit tuning) 5)
-            content         (get-in msg [:mem :content])
-            {:keys [embedding usage]} (llm-provider/embed embedding-provider content)
-            _  (when usage
-                 (usage/record-from-provider-safe! db
-                                                   {:operation "retain" :step "dedup-embed"
-                                                    :namespace (:namespace msg)}
-                                                   usage))
-            retain-ns  (:namespace msg)
-            candidates (when @vector-index
-                         (try
-                           (let [search-results (protocols/search @vector-index embedding candidate-limit)
-                                 result-ids (mapv (fn [{:keys [id]}] (UUID/fromString id)) search-results)
-                                 result-mems (when (seq result-ids)
-                                               (dh/get-memories-batch-full db result-ids))
-                                 mems-by-id (into {} (map (fn [m] [(:memory/id m) m]))
-                                                  (or result-mems []))]
-                             (mapv (fn [{:keys [id distance]}]
-                                     (let [mem-id (UUID/fromString id)
-                                           db-mem (get mems-by-id mem-id)]
-                                       (when db-mem
-                                         {:memory-id  mem-id
-                                          :content    (:memory/content db-mem)
-                                          :namespace  (:memory/namespace db-mem)
-                                          :distance   distance})))
-                                   search-results))
-                           (catch Exception e
-                             (log/warn "Vector search failed:" (.getMessage e))
-                             [])))
-            filtered-candidates (->> (or candidates [])
-                                     (filterv (fn [c]
-                                                (and (some? c)
-                                                     (= (:namespace c) retain-ns)))))]
-        [(push-op state
-                  {:correlation-id    (str (:correlation-id msg))
-                   :content           (truncate content 200)
-                   :layer             (get-in msg [:mem :layer])
-                   :candidate-count   (count filtered-candidates)
-                   :candidates        (mapv (fn [c]
-                                              {:distance (double (:distance c))
-                                               :content  (truncate (:content c) 200)})
-                                            filtered-candidates)
-                   :vector-index?     (some? @vector-index)
-                   :tokens            usage})
-         {:out [(assoc msg
-                       :mem (assoc (:mem msg)
-                                   :embedding embedding
-                                   :candidates filtered-candidates)
-                       :embed-usage usage)]}])))))
+      (if-let [batch-items (:batch-items msg)]
+        ;; Batch path: embed all texts in one HTTP call, then dedup each
+        (let [candidate-limit (or (:retain-candidate-limit tuning) 5)
+              results (process-batch-embed embedding-provider vector-index db
+                                           candidate-limit batch-items)
+              out-msgs (mapv :msg results)
+              new-state (push-op state
+                                 {:op             :batch-embed
+                                  :batch-size     (count batch-items)
+                                  :items          (mapv (fn [{:keys [msg]}]
+                                                          {:correlation-id (str (:correlation-id msg))
+                                                           :content        (truncate (get-in msg [:mem :content]) 200)})
+                                                        results)})]
+          [new-state {:out out-msgs}])
+        ;; Single message fallback
+        (let [candidate-limit (or (:retain-candidate-limit tuning) 5)
+              content         (get-in msg [:mem :content])
+              retain-ns       (:namespace msg)
+              [embedding usage filtered-candidates]
+              (dedup-single embedding-provider vector-index db
+                            candidate-limit content retain-ns)]
+          [(push-op state
+                    {:correlation-id    (str (:correlation-id msg))
+                     :content           (truncate content 200)
+                     :layer             (get-in msg [:mem :layer])
+                     :candidate-count   (count filtered-candidates)
+                     :candidates        (mapv (fn [c]
+                                                {:distance (double (:distance c))
+                                                 :content  (truncate (:content c) 200)})
+                                              filtered-candidates)
+                     :vector-index?     (some? @vector-index)
+                     :tokens            usage})
+           {:out [(assoc msg
+                         :mem (assoc (:mem msg)
+                                     :embedding embedding
+                                     :candidates filtered-candidates)
+                         :embed-usage usage)]}]))))))
 
 ;; ---------------------------------------------------------------------------
 ;; :decide

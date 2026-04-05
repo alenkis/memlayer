@@ -12,7 +12,7 @@
             [memlayer.schema :as schema]
             [integrant.core :as ig]
             [clojure.tools.logging :as log])
-  (:import [java.util.concurrent Executors ExecutorService]))
+  (:import [java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit]))
 
 (defn- start-error-consumer!
   "Consume the flow's error channel, logging errors.
@@ -33,7 +33,7 @@
    so flow/ping can serialize process state without
    encountering Java objects."
   [{:keys [db vector-index embedding-provider chat-provider prompts tuning cost-config
-           correlation-map io-threads]}]
+           correlation-map io-threads embed-batch-size]}]
   (let [shared {:db                 db
                 :vector-index       vector-index
                 :embedding-provider embedding-provider
@@ -41,31 +41,49 @@
                 :prompts            prompts
                 :tuning             tuning
                 :correlation-map    correlation-map
-                :cost-config        cost-config}]
+                :cost-config        cost-config
+                :max-batch-size     embed-batch-size}]
     {:procs
      {:prepare-context {:proc (procs/prepare-context-proc shared)}
       :batch-extract   {:proc (procs/batch-extract-proc shared)}
+      :collect-embeds  {:proc (procs/collect-embeds-proc shared)}
       :embed-and-dedup {:proc (procs/embed-and-dedup-proc shared)}
       :decide          {:proc (procs/decide-proc shared)}
       :execute         {:proc (procs/execute-proc shared)}}
 
      :conns
      [[[:prepare-context :out] [:batch-extract :in]]
-      [[:batch-extract :out] [:embed-and-dedup :in]]
+      [[:batch-extract :out] [:collect-embeds :in]]
+      [[:collect-embeds :out] [:embed-and-dedup :in]]
       [[:embed-and-dedup :out] [:decide :in]]
       [[:decide :out] [:execute :in]]]
 
      :io-exec (Executors/newFixedThreadPool (or io-threads 8))}))
 
+(defn- start-flush-timer!
+  "Start a scheduled executor that injects flush signals into :collect-embeds :in.
+   Returns the ScheduledExecutorService."
+  [graph wait-ms]
+  (let [exec (Executors/newSingleThreadScheduledExecutor)]
+    (.scheduleAtFixedRate exec
+                          ^Runnable (fn []
+                                      (try
+                                        (flow/inject graph [:collect-embeds :in]
+                                                     [{:type :flush}])
+                                        (catch Exception _)))
+                          ^long wait-ms ^long wait-ms TimeUnit/MILLISECONDS)
+    exec))
+
 (defn start-flow!
   "Create and start the retention flow. Returns the flow handle map."
-  [config]
+  [config {:keys [embed-batch-wait-ms]}]
   (let [g    (flow/create-flow config)
         chans (flow/start g)]
     (flow/resume g)
     {:graph      g
      :report-chan (:report-chan chans)
-     :error-chan  (:error-chan chans)}))
+     :error-chan  (:error-chan chans)
+     :flush-exec (start-flush-timer! g (or embed-batch-wait-ms 50))}))
 
 (defn submit!
   "Submit a batch of items to the retention flow and await the result.
@@ -99,21 +117,25 @@
         correlation-map (corr/create-correlation-map)
         fc              (create-flow-config
                          (assoc deps
-                                :correlation-map correlation-map
-                                :cost-config     cost-config
-                                :io-threads      (:io-threads flow-config)))
-        {:keys [graph error-chan]} (start-flow! fc)
-        error-consumer  (start-error-consumer! error-chan)]
+                                :correlation-map  correlation-map
+                                :cost-config      cost-config
+                                :io-threads       (:io-threads flow-config)
+                                :embed-batch-size (:embed-batch-size flow-config)))
+        {:keys [graph error-chan flush-exec]}
+        (start-flow! fc {:embed-batch-wait-ms (:embed-batch-wait-ms flow-config)})
+        error-consumer (start-error-consumer! error-chan)]
     {:graph           graph
      :correlation-map correlation-map
      :event-log       (event-log/create-log)
      :error-consumer  error-consumer
      :io-exec         (:io-exec fc)
+     :flush-exec      flush-exec
      :timeout-ms      (:submit-timeout-ms flow-config 120000)}))
 
 (defn stop-standalone!
   "Stop a standalone retention flow."
-  [{:keys [graph correlation-map ^ExecutorService io-exec]}]
+  [{:keys [graph correlation-map ^ExecutorService io-exec ^ScheduledExecutorService flush-exec]}]
+  (when flush-exec (.shutdown flush-exec))
   (flow/stop graph)
   (corr/drain! correlation-map)
   (when io-exec (.shutdown io-exec)))
@@ -128,10 +150,12 @@
         correlation-map (corr/create-correlation-map)
         fc             (create-flow-config
                         (assoc deps
-                               :correlation-map correlation-map
-                               :cost-config     cost-config
-                               :io-threads      (:io-threads flow-config)))
-        {:keys [graph report-chan error-chan]} (start-flow! fc)
+                               :correlation-map  correlation-map
+                               :cost-config      cost-config
+                               :io-threads       (:io-threads flow-config)
+                               :embed-batch-size (:embed-batch-size flow-config)))
+        {:keys [graph report-chan error-chan flush-exec]}
+        (start-flow! fc {:embed-batch-wait-ms (:embed-batch-wait-ms flow-config)})
         error-consumer (start-error-consumer! error-chan)]
     {:graph           graph
      :correlation-map correlation-map
@@ -140,11 +164,13 @@
      :error-chan      error-chan
      :error-consumer  error-consumer
      :io-exec         (:io-exec fc)
+     :flush-exec      flush-exec
      :timeout-ms      (:submit-timeout-ms flow-config 120000)}))
 
 (defmethod ig/halt-key! :memlayer/retention-flow
-  [_ {:keys [graph correlation-map ^ExecutorService io-exec]}]
+  [_ {:keys [graph correlation-map ^ExecutorService io-exec ^ScheduledExecutorService flush-exec]}]
   (log/debug "Stopping retention flow")
+  (when flush-exec (.shutdown flush-exec))
   (flow/stop graph)
   (corr/drain! correlation-map)
   (when io-exec

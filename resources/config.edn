@@ -39,8 +39,10 @@
            :reflect-curate           "prompts/reflect-curate.edn"
            :recall                   "prompts/recall.edn"}
 
- :flow {:io-threads #long #or [#env FLOW_IO_THREADS 32]
-        :submit-timeout-ms #long #or [#env FLOW_SUBMIT_TIMEOUT_MS 120000]}
+ :flow {:io-threads          #long #or [#env FLOW_IO_THREADS 32]
+        :submit-timeout-ms   #long #or [#env FLOW_SUBMIT_TIMEOUT_MS 120000]
+        :embed-batch-size    #long #or [#env FLOW_EMBED_BATCH_SIZE 64]
+        :embed-batch-wait-ms #long #or [#env FLOW_EMBED_BATCH_WAIT_MS 50]}
 
  :tuning {:retain-context-threshold #double #or [#env RETAIN_CONTEXT_THRESHOLD 0.4]
           :retain-context-limit #long #or [#env RETAIN_CONTEXT_LIMIT 10]
